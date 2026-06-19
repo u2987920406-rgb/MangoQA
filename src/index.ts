@@ -19,6 +19,7 @@ import { security } from './branches/security.js'
 import { performance } from './branches/performance.js'
 import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
+import { startDisjoncteur } from './breakers/runner.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -158,7 +159,13 @@ const watcher = chokidar.watch(pattern, {
 watcher.on('add', f => void handleSignal(f))
 watcher.on('change', f => void handleSignal(f))
 
-console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches`)
+// ── Visage 1 : le Disjoncteur (réflexes durs, zéro LLM) ──────────────────────
+// Surveille en continu le flux du Bus (.mangoqa/bus-events.jsonl, exporté par le
+// pont MangoOS) et écrit ses constats (breaker-verdict.json / breaker-alerts.jsonl).
+// Indépendant du watcher d'audit : les deux visages tournent côte à côte.
+const stopDisjoncteur = startDisjoncteur(WORKSPACE)
+
+console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur`)
 console.log(`[mango-qa] workspace : ${WORKSPACE}`)
 console.log(`[mango-qa] sentinelle : ${sentinelPath}`)
 console.log('[mango-qa] en attente de phase-complete.json…')
@@ -169,6 +176,7 @@ function shutdown(): void {
   } catch {
     /* déjà absente */
   }
+  stopDisjoncteur()
   void watcher.close()
   process.exit(0)
 }
