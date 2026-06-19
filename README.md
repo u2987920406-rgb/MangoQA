@@ -1,0 +1,69 @@
+# 🥭 Mango QA — Audit Fantôme pour MangoOS
+
+Processus Node.js **indépendant** de MangoOS qui audite chaque phase de build et
+répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
+
+> ⚠️ **Reconstruction du 2026-06-19.** Le code original (testé à l'atelier) n'a pas
+> pu être rapatrié (clé USB absente). Cette version a été **reconstruite à partir
+> du contrat d'interface figé** `mangoai/server/src/mangoqa.ts` + le guide de
+> transfert V2 + la spec « Production Aveugle / Audit Fantôme ». Elle est
+> **fonctionnellement compatible** avec MangoOS (même contrat I/O), mais les
+> détails internes des branches (prompts, seuils) sont une réimplémentation, pas
+> le code byte-identique de l'atelier. Si l'original revient, comparer puis
+> remplacer/fusionner.
+
+## Architecture
+
+```
+MangoOS écrit  <projet>/.mangoqa/phase-complete.json   (PhaseSignal)
+        │
+        ▼  (chokidar « entre sans frapper »)
+Mango QA  ──►  6 branches en parallèle (cerveau = abonnement Claude Code, $0)
+        │        🏗️ architecture · 🔒 sécurité · ♿ accessibilité
+        │        ⚡ performance · 🧪 tests · 🎨 design-system (conseil)
+        ▼
+Mango QA écrit  <projet>/.mangoqa/audit-verdict.json    (QAVerdict)
+        │
+        └─► si red : journalise dans .mangoqa-retex.jsonl (Boîte Noire)
+            et réinjecte préemptivement aux audits suivants.
+```
+
+- **Sentinelle** : `workspace/.mangoqa-active` (heartbeat 10 s) → MangoOS détecte
+  automatiquement que Mango QA tourne via `isMangoQaActive()`. Rien à configurer.
+- **Contrat I/O figé** : `src/types.ts` (`PhaseSignal`, `QAVerdict`, `Rejection`).
+  Ne pas en changer la forme sans changer aussi `mangoqa.ts` côté MangoOS.
+- **Fail-open** : toute défaillance de Mango QA (réseau, parsing) devient un
+  `skip` — la production n'est jamais bloquée par une erreur de l'auditeur.
+- **Branches** : `src/branches/*.ts`. `design-system` est en **conseil** (jamais
+  de Feu Rouge). Ordre dans `src/index.ts` = priorité du rejet.
+
+## Installation
+
+```bash
+cd D:\IA\MangoQA
+npm install
+# créer .env (déjà présent ici) : MANGOAI_WORKSPACE pointe sur le workspace MangoOS
+```
+
+## Lancer
+
+```bash
+npm run dev      # watch (redémarre à chaque modif)
+npm run start    # one-shot
+npm run typecheck
+```
+
+MangoOS détecte Mango QA tout seul dès qu'il tourne. Si le terminal n'est pas
+lancé, MangoOS continue normalement (fail-open).
+
+## ⚠️ Bug chokidar connu
+
+Un `phase-complete.json` écrit via PowerShell `Set-Content` ou Bash MINGW n'est
+pas toujours vu par chokidar. Pour un **déclenchement manuel**, écrire le signal
+via Node : `node -e "require('fs').writeFileSync(...)"` (même mécanisme que
+MangoOS). N'affecte pas le flux normal (MangoOS écrit déjà via Node).
+
+## Validé e2e (2026-06-19)
+
+Cycle complet prouvé sur un projet de test : Feu Rouge ♿ (inputs sans label,
+`div onClick`, `img` sans alt) → Retex journalisé → correction → Feu Vert.
