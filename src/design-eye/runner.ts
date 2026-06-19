@@ -1,0 +1,92 @@
+// Mango QA — Visage 3 : runner de l'Œil Design (couche I/O).
+//
+// L'Œil regarde le RENDU produit. À chaque phase terminée (même signal que les
+// branches d'audit), il lit les fichiers de style du projet, MESURE (contraste,
+// tokens, conformité) de façon déterministe, et écrit ses observations dans
+//   <projet>/.mangoqa/design-observations.json
+// À CÔTÉ du verdict d'audit — il n'y touche JAMAIS. L'Œil ne bloque rien
+// (`blocking: false`) : il converge avec Raf. Fail-open : un échec n'arrête rien.
+import fs from 'node:fs'
+import path from 'node:path'
+import {
+  inspectDesign,
+  extractContrastPairs,
+  extractCssColors,
+  type DesignContext,
+  type DesignObservation,
+} from './eye.js'
+import { normalizeHex } from './tokens.js'
+
+export const OBSERVATIONS_FILE = 'design-observations.json'
+
+/** Un fichier de projet (forme partagée avec les branches d'audit). */
+export interface DesignFile {
+  path: string
+  content: string
+}
+
+const STYLE_EXT = ['.css', '.scss', '.jsx', '.tsx', '.html', '.vue', '.svelte']
+function isStyle(p: string): boolean {
+  return STYLE_EXT.some(e => p.endsWith(e))
+}
+
+/** Palette DÉCLARÉE = valeurs hex assignées à des variables CSS (`--x: #hex`)
+ * ou des tokens `@theme`. C'est le design system du projet : tout hex employé
+ * ailleurs et absent d'ici est « hors palette ». */
+export function extractDeclaredPalette(css: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const re = /--[\w-]+\s*:\s*(#[0-9a-fA-F]{3,6})\b/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(css)) !== null) {
+    const n = normalizeHex(m[1])
+    if (n && !seen.has(n)) {
+      seen.add(n)
+      out.push(n)
+    }
+  }
+  return out
+}
+
+/** Construit un contexte design à partir des fichiers de style d'un projet, puis
+ * lance l'Œil. La palette déclarée (variables CSS) sert de référence de tokens. */
+export function inspectProjectDesign(files: DesignFile[], brief?: DesignContext['brief']): DesignObservation {
+  const styleFiles = files.filter(f => isStyle(f.path))
+  const allCss = styleFiles.map(f => f.content).join('\n')
+
+  const palette = extractDeclaredPalette(allCss)
+  const ctx: DesignContext = {
+    palette,
+    pairs: extractContrastPairs(allCss),
+    usedColors: extractCssColors(allCss),
+    brief,
+  }
+  return inspectDesign(ctx)
+}
+
+export interface DesignEyeDeps {
+  writeFile?: (file: string, data: string) => void
+  now?: () => number
+}
+
+/** Un passage de l'Œil sur un projet : mesure et écrit les observations.
+ * N'écrit AUCUN verdict, ne renvoie aucun blocage. Renvoie le rapport. */
+export function runDesignEye(
+  projDir: string,
+  files: DesignFile[],
+  deps: DesignEyeDeps = {},
+  brief?: DesignContext['brief'],
+): DesignObservation {
+  const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
+  const now = deps.now ?? (() => Date.now())
+
+  const obs = inspectProjectDesign(files, brief)
+  try {
+    const dir = path.join(projDir, '.mangoqa')
+    fs.mkdirSync(dir, { recursive: true })
+    writeFile(path.join(dir, OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
+  } catch {
+    // fail-open : l'Œil n'arrête jamais la production pour un échec d'écriture.
+  }
+  return obs
+}

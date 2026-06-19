@@ -20,6 +20,7 @@ import { performance } from './branches/performance.js'
 import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
+import { runDesignEye } from './design-eye/runner.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -133,6 +134,17 @@ async function handleSignal(signalFile: string): Promise<void> {
     if (!fs.existsSync(qaDir)) fs.mkdirSync(qaDir, { recursive: true })
     fs.writeFileSync(path.join(qaDir, 'audit-verdict.json'), JSON.stringify(verdict, null, 2), 'utf8')
 
+    // Visage 3 — l'Œil Design : mesure déterministe (contraste/tokens/conformité)
+    // sur les mêmes fichiers. Écrit ses observations À CÔTÉ du verdict, ne le
+    // modifie jamais, ne bloque jamais (souple). Fail-open.
+    try {
+      const eye = runDesignEye(projDir, files)
+      const visual = eye.counts.measured > 0 ? `👁️  ${eye.summary}` : '👁️  cohérence visuelle OK'
+      console.log(`  ${visual}`)
+    } catch {
+      /* l'Œil n'arrête jamais la production */
+    }
+
     if (verdict.verdict === 'red' && verdict.rejection) {
       recordRejection(WORKSPACE, signal, verdict.rejection)
       console.log(`[mango-qa] 🔴 Feu Rouge (${verdict.rejection.branch}) en ${Date.now() - t0}ms → ${verdict.rejection.corrective_action}`)
@@ -165,7 +177,7 @@ watcher.on('change', f => void handleSignal(f))
 // Indépendant du watcher d'audit : les deux visages tournent côte à côte.
 const stopDisjoncteur = startDisjoncteur(WORKSPACE)
 
-console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur`)
+console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design`)
 console.log(`[mango-qa] workspace : ${WORKSPACE}`)
 console.log(`[mango-qa] sentinelle : ${sentinelPath}`)
 console.log('[mango-qa] en attente de phase-complete.json…')
