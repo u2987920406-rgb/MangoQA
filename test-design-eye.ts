@@ -14,7 +14,10 @@ import {
   extractContrastPairs,
   type DesignObservation,
 } from './src/design-eye/eye.js'
-import { extractDeclaredPalette, inspectProjectDesign, runDesignEye } from './src/design-eye/runner.js'
+import { extractDeclaredPalette, inspectProjectDesign, runDesignEye, readLatestBrief } from './src/design-eye/runner.js'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 let passed = 0
 let failed = 0
@@ -175,6 +178,40 @@ function near(a: number, b: number, eps = 0.05): boolean {
   check('runDesignEye → observedAt injecté', Object.values(writes)[0].includes('"observedAt": 42'))
   check('runDesignEye → blocking false', obs.blocking === false)
   check('runDesignEye → contraste faible mesuré', obs.measured.contrast.length === 1)
+}
+
+// ── readLatestBrief : la cible vient du flux du Bus ──────────────────────────
+{
+  // Workspace temporaire avec un .mangoqa/bus-events.jsonl simulé.
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'mangoqa-eye-'))
+  const qaDir = path.join(ws, '.mangoqa')
+  fs.mkdirSync(qaDir, { recursive: true })
+  const lines = [
+    JSON.stringify({ type: 'chat.turn', sender: 'demo', payload: {}, ts: 1 }),
+    JSON.stringify({ type: 'design.reference', sender: 'demo', payload: { project: 'demo', palette: ['#7c5cff', '#0b0b12'], source: 'perfect-plan' }, ts: 2 }),
+    JSON.stringify({ type: 'design.reference', sender: 'autre', payload: { project: 'autre', palette: ['#111111'] }, ts: 3 }),
+    'ligne corrompue {{{',
+    JSON.stringify({ type: 'design.reference', sender: 'demo', payload: { project: 'demo', palette: ['#7c5cff', '#00d4ff'] }, ts: 4 }),
+  ]
+  fs.writeFileSync(path.join(qaDir, 'bus-events.jsonl'), lines.join('\n'), 'utf8')
+
+  const brief = readLatestBrief(ws, 'demo')
+  check('readLatestBrief : dernière référence du projet', JSON.stringify(brief?.palette) === JSON.stringify(['#7c5cff', '#00d4ff']))
+  check('readLatestBrief : autre projet filtré', !brief?.palette?.includes('#111111'))
+
+  const autre = readLatestBrief(ws, 'autre')
+  check('readLatestBrief : ciblé par projet', JSON.stringify(autre?.palette) === JSON.stringify(['#111111']))
+
+  check('readLatestBrief : projet inconnu → undefined', readLatestBrief(ws, 'inconnu') === undefined)
+  check('readLatestBrief : flux absent → undefined', readLatestBrief(path.join(ws, 'nope')) === undefined)
+
+  // Bout-à-bout : la cible du flux active briefDrift dans l'Œil.
+  const files = [{ path: 'index.css', content: ':root { --a: #7c5cff; } .x { color: #7c5cff; }' }]
+  const obs = inspectProjectDesign(files, readLatestBrief(ws, 'demo'))
+  check('e2e : #00d4ff de la cible absent du rendu → briefDrift', obs.measured.briefDrift.includes('#00d4ff'))
+  check('e2e : toujours jamais bloquant', obs.blocking === false)
+
+  fs.rmSync(ws, { recursive: true, force: true })
 }
 
 // ── Bilan ────────────────────────────────────────────────────────────────────

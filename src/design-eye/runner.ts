@@ -19,6 +19,39 @@ import { normalizeHex } from './tokens.js'
 
 export const OBSERVATIONS_FILE = 'design-observations.json'
 
+/** Flux du Bus exporté par le pont MangoOS (cf. kernel-mangoqa-bridge.ts). */
+const BUS_EVENTS_FILE = 'bus-events.jsonl'
+/** Événement « cible design » publié par MangoOS (kernel-design-events.ts). */
+const DESIGN_REFERENCE_EVENT = 'design.reference'
+
+/** Lit la DERNIÈRE référence design (palette Sharingan/Perfect Plan) du flux du
+ * Bus, pour ce projet → l'Œil la passe en `brief` et mesure enfin la conformité
+ * (briefDrift). Tolérant : flux absent/corrompu → undefined (pas de brief). */
+export function readLatestBrief(workspace: string, project?: string): DesignContext['brief'] | undefined {
+  let raw: string
+  try {
+    raw = fs.readFileSync(path.join(workspace, '.mangoqa', BUS_EVENTS_FILE), 'utf8')
+  } catch {
+    return undefined
+  }
+  let palette: string[] | undefined
+  for (const line of raw.split('\n')) {
+    const t = line.trim()
+    if (!t) continue
+    try {
+      const e = JSON.parse(t) as { type?: string; sender?: string; payload?: { project?: string; palette?: unknown } }
+      if (e.type !== DESIGN_REFERENCE_EVENT) continue
+      if (project && e.payload?.project !== project && e.sender !== project) continue
+      if (Array.isArray(e.payload?.palette) && e.payload!.palette.length > 0) {
+        palette = (e.payload!.palette as unknown[]).filter((c): c is string => typeof c === 'string')
+      }
+    } catch {
+      /* ligne corrompue ignorée */
+    }
+  }
+  return palette && palette.length > 0 ? { palette } : undefined
+}
+
 /** Un fichier de projet (forme partagée avec les branches d'audit). */
 export interface DesignFile {
   path: string
