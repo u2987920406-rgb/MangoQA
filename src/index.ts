@@ -20,7 +20,7 @@ import { performance } from './branches/performance.js'
 import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
-import { runDesignEye } from './design-eye/runner.js'
+import { runDesignEye, readLatestBrief } from './design-eye/runner.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -138,7 +138,10 @@ async function handleSignal(signalFile: string): Promise<void> {
     // sur les mêmes fichiers. Écrit ses observations À CÔTÉ du verdict, ne le
     // modifie jamais, ne bloque jamais (souple). Fail-open.
     try {
-      const eye = runDesignEye(projDir, files)
+      // La cible (palette Sharingan/Perfect Plan) vient du flux du Bus, publiée
+      // par MangoOS → l'Œil mesure désormais la conformité au brief (briefDrift).
+      const brief = readLatestBrief(WORKSPACE, signal.projectName)
+      const eye = runDesignEye(projDir, files, {}, brief)
       const visual = eye.counts.measured > 0 ? `👁️  ${eye.summary}` : '👁️  cohérence visuelle OK'
       console.log(`  ${visual}`)
     } catch {
