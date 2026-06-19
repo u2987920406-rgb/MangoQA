@@ -79,9 +79,13 @@ export function runDisjoncteurOnce(
   const appendLine = deps.appendLine ?? ((f, l) => fs.appendFileSync(f, l + '\n', 'utf8'))
   const known = deps.knownTrips ?? new Set<string>()
   const now = deps.now ?? (() => Date.now())
+  // Garde-fou coût = « par nuit » (fondation). Le flux .jsonl est append-only et
+  // grossit ; sans fenêtre on sommerait TOUT l'historique → faux déclenchement
+  // garanti. Défaut : les 12 dernières heures (couvre une nuit), surchargeable.
+  const costWindowStartTs = deps.costWindowStartTs ?? now() - 12 * 60 * 60 * 1000
 
   const events = readEvents(workspace)
-  const report = evaluateBreakers(events, cfg, { now, costWindowStartTs: deps.costWindowStartTs })
+  const report = evaluateBreakers(events, cfg, { now, costWindowStartTs })
 
   const dir = qaDir(workspace)
   try {
