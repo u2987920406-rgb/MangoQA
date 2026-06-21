@@ -84,6 +84,71 @@ const F = (p: string, content: string): ProjectFile => ({ path: p, content })
   check('AST : graphe sain (le commentaire n\'est pas un fantôme) → measured 0', inspectFlux(g).counts.measured === 0)
 }
 
+// ── Résolution de constantes (#140-#3 bonus) : WINDOWS.SUITE → "suite" ───────
+// Depuis #140-#2, la nav s'écrit `WINDOWS.SUITE` / `SCREENS.X`, pas `"suite"`. L'AST
+// résout ces membres via une table des symboles — la regex en serait incapable.
+{
+  const files = [
+    F('nav.js', `
+      export const SCREENS = Object.freeze({ HOME: "home", DETAIL: "detail" });
+      export const WINDOWS = Object.freeze({ SUITE: "suite", PROJECTS: "projects" });
+    `),
+    F('App.jsx', `
+      import { SCREENS, WINDOWS } from "./nav.js";
+      const [screen, setScreen] = useState(SCREENS.HOME);
+      if (screen === SCREENS.HOME) return <Home onGo={() => setScreen(SCREENS.DETAIL)} />;
+      if (screen === SCREENS.DETAIL) return <Detail onBack={() => setScreen(SCREENS.HOME)} />;
+      openWindow({ type: WINDOWS.SUITE });
+      openWindow({ type: WINDOWS.PROJECTS });
+    `),
+    F('WindowManager.jsx', `
+      import { WINDOWS } from "./nav.js";
+      if (win.type === WINDOWS.SUITE) return <Suite/>;
+      if (win.type === WINDOWS.PROJECTS) return <Projects/>;
+    `),
+  ]
+  const g = buildGraph(files)
+  // L'init useState(SCREENS.HOME) est résolu → entrée "home".
+  check('const : entrée résolue depuis SCREENS.HOME', g.entries.includes('home') && g.entries.length === 1)
+  // La machine est retenue alors que setScreen n'est appelé QU'avec des constantes.
+  check('const : écrans rendus home+detail (via SCREENS.X)', g.screensRendered.includes('home') && g.screensRendered.includes('detail'))
+  check('const : cible "detail" résolue (setScreen(SCREENS.DETAIL))', g.screenTargets.some(e => e.target === 'detail'))
+  // Fenêtres : rendu (win.type === WINDOWS.X) ET cible (openWindow type: WINDOWS.X) résolus.
+  check('const : fenêtres rendues suite+projects (via WINDOWS.X)', g.windowsRendered.includes('suite') && g.windowsRendered.includes('projects'))
+  check('const : cible fenêtre "suite" résolue', g.windowTargets.some(e => e.target === 'suite'))
+  // Le payoff : tout est réconcilié → ZÉRO fantôme (avant la résolution : 2 faux fantômes).
+  check('const : zéro fantôme (cibles réconciliées avec les rendus)', inspectFlux(g).counts.measured === 0)
+}
+
+// ── Robustesse AST : erreur JSX bénigne profonde + ouvreur en appel de méthode ─
+// Deux régressions réelles attrapées sur le cockpit : (a) un `&` brut dans du texte JSX
+// (valide en React) flague tout le fichier `hasError` — il ne doit PAS jeter le fichier
+// vers le regex (qui raterait les rendus `WINDOWS.X`) ; (b) les ouvreurs sont souvent des
+// appels de MÉTHODE `a.onOpenWindow?.({type: WINDOWS.X})`, pas un identifiant nu.
+{
+  const files = [
+    F('nav.js', `export const WINDOWS = Object.freeze({ SUITE: "suite" });`),
+    F('App.jsx', `
+      import { WINDOWS } from "./nav.js";
+      function App({ api }) {
+        return <button onClick={() => api.onOpenWindow?.({ type: WINDOWS.SUITE })}>Créer & construire</button>;
+      }
+    `),
+    F('WindowManager.jsx', `
+      import { WINDOWS } from "./nav.js";
+      function WM({ win }) {
+        // le '&' ci-dessous (Créer & construire) met le fichier en hasError sans casser la structure
+        if (win.type === WINDOWS.SUITE) return <div>Créer & construire</div>;
+        return null;
+      }
+    `),
+  ]
+  const g = buildGraph(files)
+  check('robustesse : rendu capté malgré un & bénin (erreur profonde, pas top-level)', g.windowsRendered.includes('suite'))
+  check('robustesse : ouvreur en méthode a.onOpenWindow?.(…) capté', g.windowTargets.some(e => e.target === 'suite'))
+  check('robustesse : zéro fantôme (rendu ↔ cible réconciliés)', inspectFlux(g).counts.measured === 0)
+}
+
 // ── R3 : écran fantôme (le bug réel #136 « chat ») ───────────────────────────
 {
   const files = [
