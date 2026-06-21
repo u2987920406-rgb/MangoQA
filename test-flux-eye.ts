@@ -3,10 +3,14 @@
 import { findStateMachines, buildGraph } from './src/flux-eye/graph.js'
 import { inspectFlux } from './src/flux-eye/eye.js'
 import { inspectProjectFlux, runFluxEye } from './src/flux-eye/runner.js'
+import { initFluxParser } from './src/flux-eye/parser.js'
 import type { ProjectFile } from './src/types.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+// Le moteur AST (tree-sitter/WASM) se pré-charge une fois ; `buildGraph` reste sync.
+await initFluxParser()
 
 let passed = 0
 let failed = 0
@@ -56,6 +60,28 @@ const F = (p: string, content: string): ProjectFile => ({ path: p, content })
   check('cibles écran', g.screenTargets.some(e => e.target === 'settings'))
   check('fenêtre rendue', g.windowsRendered.includes('projects'))
   check('cible fenêtre', g.windowTargets.some(e => e.target === 'projects'))
+}
+
+// ── Moteur AST (#140-#3) : code BIEN FORMÉ → vrai arbre syntaxique ───────────
+// Prouve la valeur de l'AST : un `setScreen(...)` en COMMENTAIRE (ou dans une string)
+// n'est PAS une cible — là où le regex produisait un faux positif « fantôme ».
+{
+  const files = [
+    F('App.tsx', `
+      function App() {
+        const [screen, setScreen] = useState("home");
+        // setScreen("ghostcomment") — en commentaire, ne doit PAS compter comme cible
+        if (screen === "home") return <Home onGo={() => setScreen("about")} />;
+        if (screen === "about") return <About onBack={() => setScreen("home")} />;
+        return null;
+      }
+    `),
+  ]
+  const g = buildGraph(files)
+  check('AST : écrans rendus home+about', g.screensRendered.includes('home') && g.screensRendered.includes('about'))
+  check('AST : cible "about" captée', g.screenTargets.some(e => e.target === 'about'))
+  check('AST : commentaire ignoré (pas de cible "ghostcomment")', g.screenTargets.every(e => e.target !== 'ghostcomment'))
+  check('AST : graphe sain (le commentaire n\'est pas un fantôme) → measured 0', inspectFlux(g).counts.measured === 0)
 }
 
 // ── R3 : écran fantôme (le bug réel #136 « chat ») ───────────────────────────

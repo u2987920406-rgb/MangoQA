@@ -7,6 +7,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { analyzeFlux } from './src/flux-eye/runner.js'
 import { runFluxDeep } from './src/flux-eye/deep.js'
+import { initFluxParser } from './src/flux-eye/parser.js'
 
 const args = process.argv.slice(2)
 const deep = args.includes('--deep')
@@ -22,6 +23,7 @@ if (!fs.existsSync(projDir)) {
 }
 
 console.log(`\n🧭 Auditeur de Flux — ${projDir}\n`)
+await initFluxParser() // pré-charge le moteur AST (tree-sitter/WASM) — buildGraph reste sync
 const { obs, graph, files } = analyzeFlux(projDir, {})
 
 console.log(obs.summary)
