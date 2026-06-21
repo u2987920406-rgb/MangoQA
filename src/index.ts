@@ -21,7 +21,8 @@ import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
 import { runDesignEye, readLatestBrief } from './design-eye/runner.js'
-import { runFluxEye } from './flux-eye/runner.js'
+import { analyzeFlux } from './flux-eye/runner.js'
+import { shouldRunDeep, runFluxDeep } from './flux-eye/deep.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -153,8 +154,14 @@ async function handleSignal(signalFile: string): Promise<void> {
     // surfaces inatteignables) sur tout le source du projet. Écrit ses observations
     // À CÔTÉ du verdict, ne le modifie jamais, ne bloque jamais (conseil). Fail-open.
     try {
-      const flux = runFluxEye(projDir, {})
+      const { obs: flux, graph: fluxGraph, files: fluxFiles } = analyzeFlux(projDir, {})
       console.log(`  🧭 ${flux.counts.measured > 0 || flux.counts.convergence > 0 ? flux.summary : 'flux cohérent'}`)
+      // Tier 1 (conseil, LLM, cost-aware) : seulement si un declencheur s'arme.
+      const deepDecision = shouldRunDeep(fluxGraph, flux, signal, { workspace: WORKSPACE })
+      if (deepDecision.run) {
+        const deep = await runFluxDeep(projDir, fluxGraph, flux, fluxFiles, signal, {})
+        console.log(`  🧭+ Tier 1 (${deepDecision.reason}) → ${deep.summary}`)
+      }
     } catch {
       /* l'Auditeur n'arrête jamais la production */
     }

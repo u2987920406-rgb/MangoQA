@@ -10,7 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ProjectFile } from '../types.js'
-import { buildGraph } from './graph.js'
+import { buildGraph, type NavGraph } from './graph.js'
 import { inspectFlux, type FluxObservation } from './eye.js'
 
 export const OBSERVATIONS_FILE = 'flux-observations.json'
@@ -66,14 +66,24 @@ export interface FluxEyeDeps {
   readSource?: (projDir: string) => ProjectFile[]
 }
 
-/** Un passage de l'Auditeur sur un projet : mesure et écrit les observations.
- * N'écrit AUCUN verdict, ne renvoie aucun blocage. Renvoie le rapport. */
-export function runFluxEye(projDir: string, deps: FluxEyeDeps = {}): FluxObservation {
+/** Le graphe + le rapport + les fichiers lus, pour que le Tier 1 reutilise le
+ * graphe sans re-scanner le source. */
+export interface FluxAnalysis {
+  obs: FluxObservation
+  graph: NavGraph
+  files: ProjectFile[]
+}
+
+/** Un passage de l'Auditeur sur un projet : lit le source UNE fois, mesure, écrit
+ * les observations, et renvoie graphe + rapport + fichiers (pour le Tier 1). */
+export function analyzeFlux(projDir: string, deps: FluxEyeDeps = {}): FluxAnalysis {
   const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
   const now = deps.now ?? (() => Date.now())
   const readSource = deps.readSource ?? readAllSource
 
-  const obs = inspectProjectFlux(readSource(projDir))
+  const files = readSource(projDir)
+  const graph = buildGraph(files)
+  const obs = inspectFlux(graph)
   try {
     const dir = path.join(projDir, '.mangoqa')
     fs.mkdirSync(dir, { recursive: true })
@@ -81,5 +91,10 @@ export function runFluxEye(projDir: string, deps: FluxEyeDeps = {}): FluxObserva
   } catch {
     // fail-open : l'Auditeur n'arrête jamais la production pour un échec d'écriture.
   }
-  return obs
+  return { obs, graph, files }
+}
+
+/** Passage Tier 0 simple : mesure et écrit les observations. Renvoie le rapport. */
+export function runFluxEye(projDir: string, deps: FluxEyeDeps = {}): FluxObservation {
+  return analyzeFlux(projDir, deps).obs
 }
