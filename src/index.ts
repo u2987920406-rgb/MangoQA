@@ -21,6 +21,7 @@ import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
 import { runDesignEye, readLatestBrief } from './design-eye/runner.js'
+import { runFluxEye } from './flux-eye/runner.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -148,6 +149,16 @@ async function handleSignal(signalFile: string): Promise<void> {
       /* l'Œil n'arrête jamais la production */
     }
 
+    // Auditeur de Flux — mesure déterministe du CHEMIN HUMAIN (écrans fantômes,
+    // surfaces inatteignables) sur tout le source du projet. Écrit ses observations
+    // À CÔTÉ du verdict, ne le modifie jamais, ne bloque jamais (conseil). Fail-open.
+    try {
+      const flux = runFluxEye(projDir, {})
+      console.log(`  🧭 ${flux.counts.measured > 0 || flux.counts.convergence > 0 ? flux.summary : 'flux cohérent'}`)
+    } catch {
+      /* l'Auditeur n'arrête jamais la production */
+    }
+
     if (verdict.verdict === 'red' && verdict.rejection) {
       recordRejection(WORKSPACE, signal, verdict.rejection)
       console.log(`[mango-qa] 🔴 Feu Rouge (${verdict.rejection.branch}) en ${Date.now() - t0}ms → ${verdict.rejection.corrective_action}`)
@@ -180,7 +191,7 @@ watcher.on('change', f => void handleSignal(f))
 // Indépendant du watcher d'audit : les deux visages tournent côte à côte.
 const stopDisjoncteur = startDisjoncteur(WORKSPACE)
 
-console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design`)
+console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design + 🧭 Auditeur de Flux`)
 console.log(`[mango-qa] workspace : ${WORKSPACE}`)
 console.log(`[mango-qa] sentinelle : ${sentinelPath}`)
 console.log('[mango-qa] en attente de phase-complete.json…')
