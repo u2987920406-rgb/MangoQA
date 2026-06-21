@@ -3,10 +3,14 @@
 import { buildGraph } from './src/flux-eye/graph.js'
 import { inspectFlux } from './src/flux-eye/eye.js'
 import { shouldRunDeep, auditFluxDeep, runFluxDeep } from './src/flux-eye/deep.js'
+import { initFluxParser } from './src/flux-eye/parser.js'
 import type { ProjectFile } from './src/types.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+// Pré-charge le moteur AST (tree-sitter/WASM) avant tout buildGraph.
+await initFluxParser()
 
 let passed = 0
 let failed = 0
