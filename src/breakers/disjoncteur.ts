@@ -92,6 +92,11 @@ export interface EvaluateOptions {
   now?: () => number
   /** Début de fenêtre pour le garde-fou coût (cumul depuis ce ts). Défaut : tout. */
   costWindowStartTs?: number
+  /** #L70 — un agent sans événement depuis plus de cette durée est PÉRIMÉ (le projet a
+   *  fini, l'agent n'existe plus) : le kill switch (#5) ne le re-déclenche plus, ce qui
+   *  évite de ré-évaluer et re-logger ~40 agents morts à chaque cycle (spam + OOM heap).
+   *  Défaut : Infinity (aucun filtrage — comportement historique, tests inchangés). */
+  agentStalenessMs?: number
 }
 
 // ── Helpers de lecture défensive du payload ──────────────────────────────────
@@ -216,7 +221,12 @@ function memoryDrift(events: BusEvent[], cfg: BreakerConfig): BreakerTrip | null
 // ── 5. Kill switch agent — agent emballé (tours / temps / tokens) ────────────
 // Par émetteur, retient le MAX des compteurs cumulés rapportés (turns/tokens/
 // durationMs). Tout dépassement = un trip ciblé sur cet agent (terminaison propre).
-function agentKillswitch(events: BusEvent[], cfg: BreakerConfig): BreakerTrip[] {
+function agentKillswitch(
+  events: BusEvent[],
+  cfg: BreakerConfig,
+  now: number,
+  stalenessMs: number,
+): BreakerTrip[] {
   interface Acc {
     turns: number
     tokens: number
@@ -238,6 +248,9 @@ function agentKillswitch(events: BusEvent[], cfg: BreakerConfig): BreakerTrip[] 
   }
   const trips: BreakerTrip[] = []
   for (const [sender, a] of per) {
+    // #L70 — agent PÉRIMÉ (aucun événement récent) : le projet est terminé, l'agent
+    // n'existe plus → on ne re-déclenche pas le kill switch éternellement (spam + OOM).
+    if (now - a.lastTs > stalenessMs) continue
     let observed: number | null = null
     let threshold = 0
     let what = ''
@@ -279,7 +292,9 @@ export function evaluateBreakers(
   opts: EvaluateOptions = {},
 ): BreakerReport {
   const now = opts.now ?? (() => Date.now())
+  const nowTs = now()
   const windowStart = opts.costWindowStartTs ?? -Infinity
+  const stalenessMs = opts.agentStalenessMs ?? Infinity
   const trips: BreakerTrip[] = []
 
   const t1 = nightlyCircuit(events, cfg)
@@ -290,12 +305,12 @@ export function evaluateBreakers(
   if (t3) trips.push(t3)
   const t4 = memoryDrift(events, cfg)
   if (t4) trips.push(t4)
-  trips.push(...agentKillswitch(events, cfg))
+  trips.push(...agentKillswitch(events, cfg, nowTs, stalenessMs))
 
   return {
     safe: trips.length === 0,
     trips,
-    evaluatedAt: now(),
+    evaluatedAt: nowTs,
     eventCount: events.length,
   }
 }
