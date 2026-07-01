@@ -29,11 +29,35 @@ function qaDir(workspace: string): string {
   return path.join(workspace, '.mangoqa')
 }
 
-/** Lit le flux du Bus (tolérant : lignes corrompues ignorées, comme le Retex). */
+// #L70 — Bornes de lecture. Le flux .jsonl est APPEND-ONLY et grossit sans limite ; le
+// relire ENTIER à chaque cycle (toutes les 5 s) allouait une string de la taille du fichier
+// → sur une session de plusieurs heures, pression heap → OOM V8 (exit 134). On ne lit donc
+// que la QUEUE (events récents, seuls pertinents) et on borne le tableau en mémoire.
+const MAX_BUS_BYTES = 4 * 1024 * 1024 // 4 Mo lus au maximum par cycle
+const MAX_BUS_EVENTS = 20_000 // borne dure du tableau d'événements gardé en mémoire
+
+/** Lit le flux du Bus (tolérant : lignes corrompues ignorées). Au-delà de MAX_BUS_BYTES,
+ *  ne lit que la queue du fichier (#L70) — allocation bornée quelle que soit sa taille. */
 export function readBusEvents(workspace: string): BusEvent[] {
+  const file = path.join(qaDir(workspace), BUS_EVENTS_FILE)
   let raw: string
   try {
-    raw = fs.readFileSync(path.join(qaDir(workspace), BUS_EVENTS_FILE), 'utf8')
+    const size = fs.statSync(file).size
+    if (size <= MAX_BUS_BYTES) {
+      raw = fs.readFileSync(file, 'utf8')
+    } else {
+      // Ne lire que les derniers MAX_BUS_BYTES octets (la queue = les events récents).
+      const fd = fs.openSync(file, 'r')
+      try {
+        const buf = Buffer.alloc(MAX_BUS_BYTES)
+        const read = fs.readSync(fd, buf, 0, MAX_BUS_BYTES, size - MAX_BUS_BYTES)
+        raw = buf.toString('utf8', 0, read)
+      } finally {
+        fs.closeSync(fd)
+      }
+      const nl = raw.indexOf('\n') // la 1ʳᵉ ligne est probablement tronquée → on la jette
+      if (nl >= 0) raw = raw.slice(nl + 1)
+    }
   } catch {
     return [] // pas encore de flux → rien à surveiller
   }
@@ -50,7 +74,8 @@ export function readBusEvents(workspace: string): BusEvent[] {
       /* ligne partielle/corrompue ignorée */
     }
   }
-  return out
+  // Borne dure : si la queue contient énormément de lignes courtes, on ne garde que les plus récentes.
+  return out.length > MAX_BUS_EVENTS ? out.slice(-MAX_BUS_EVENTS) : out
 }
 
 export interface RunnerDeps {
@@ -64,6 +89,9 @@ export interface RunnerDeps {
   knownTrips?: Set<string>
   now?: () => number
   costWindowStartTs?: number
+  /** #L70 — durée au-delà de laquelle un agent inactif est périmé (kill switch ignoré).
+   *  Défaut : Infinity (comportement historique — les tests runner restent inchangés). */
+  agentStalenessMs?: number
 }
 
 /** Un cycle complet : lit le flux, évalue les 5 disjoncteurs, écrit le verdict, et
@@ -83,9 +111,10 @@ export function runDisjoncteurOnce(
   // grossit ; sans fenêtre on sommerait TOUT l'historique → faux déclenchement
   // garanti. Défaut : les 12 dernières heures (couvre une nuit), surchargeable.
   const costWindowStartTs = deps.costWindowStartTs ?? now() - 12 * 60 * 60 * 1000
+  const agentStalenessMs = deps.agentStalenessMs ?? Infinity
 
   const events = readEvents(workspace)
-  const report = evaluateBreakers(events, cfg, { now, costWindowStartTs })
+  const report = evaluateBreakers(events, cfg, { now, costWindowStartTs, agentStalenessMs })
 
   const dir = qaDir(workspace)
   try {
@@ -115,19 +144,32 @@ export function runDisjoncteurOnce(
 
 /** Surveillance continue : un cycle toutes les `intervalMs`. Renvoie un arrêt propre.
  * Mémoire de dédup partagée entre cycles via une seule closure `known`. */
+/** #L70 — Au-delà de 30 min sans événement, un agent est périmé (le projet a fini) : le
+ *  kill switch cesse de le re-déclencher. Borne le nombre de trips vivants → borne les logs. */
+export const STALE_AGENT_MS = 30 * 60_000
+
 export function startDisjoncteur(
   workspace: string,
   cfg: BreakerConfig = DEFAULT_BREAKER_CONFIG,
   intervalMs = 5_000,
 ): () => void {
   const known = new Set<string>()
+  // #L70 — anti-spam : un trip DÉJÀ affiché n'est pas re-loggé à chaque cycle (5 s). Sans ce
+  // dédup, ~40 trips restaient affichés en boucle → journaux qui explosent + bruit inutile.
+  const logged = new Set<string>()
   const tick = (): void => {
-    const report = runDisjoncteurOnce(workspace, cfg, { knownTrips: known })
+    const report = runDisjoncteurOnce(workspace, cfg, { knownTrips: known, agentStalenessMs: STALE_AGENT_MS })
     if (!report.safe) {
       for (const t of report.trips) {
+        const sig = tripSignature(t)
+        if (logged.has(sig)) continue // déjà affiché → pas de re-log
+        logged.add(sig)
         console.log(`[mango-qa] ⚡ DISJONCTEUR « ${t.breaker} » → ${t.reason}`)
       }
     }
+    // Un trip réarmé (plus dans le rapport) est retiré → il pourra ré-alerter s'il resaute.
+    const live = new Set(report.trips.map(tripSignature))
+    for (const sig of logged) if (!live.has(sig)) logged.delete(sig)
   }
   tick()
   const handle = setInterval(tick, intervalMs)

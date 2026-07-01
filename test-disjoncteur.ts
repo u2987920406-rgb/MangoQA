@@ -8,7 +8,10 @@ import {
   type BreakerId,
   type BusEvent,
 } from './src/breakers/disjoncteur.js'
-import { runDisjoncteurOnce } from './src/breakers/runner.js'
+import { runDisjoncteurOnce, readBusEvents } from './src/breakers/runner.js'
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 
 let passed = 0
 let failed = 0
@@ -235,6 +238,57 @@ function tripIds(events: BusEvent[], c: BreakerConfig = cfg, opts = {}): Breaker
   const r3 = runDisjoncteurOnce('/ws', cfg, deps)
   check('runner → safe après nettoyage', r3.safe === true)
   check('runner → known réarmé', known.size === 0)
+}
+
+// ── #L70 : kill switch — agent PÉRIMÉ ignoré, agent RÉCENT toujours déclenché ─
+{
+  const NOW = () => 10_000_000
+  const STALE = 30 * 60_000
+  // Agent emballé (99 tours) mais dernier événement très ancien → périmé → PAS de trip.
+  const stale = [ev({ type: 'agent', sender: 'vieux', ts: 1_000, payload: { turns: 99 } })]
+  check('#L70 agent périmé (staleness) → pas de kill switch',
+    !evaluateBreakers(stale, cfg, { now: NOW, agentStalenessMs: STALE }).trips.some(t => t.breaker === 'agent-killswitch'))
+  // Sans staleness (défaut Infinity) → trip (rétrocompat : comportement historique préservé).
+  check('#L70 sans staleness (Infinity) → trip (rétrocompat)',
+    evaluateBreakers(stale, cfg, { now: NOW }).trips.some(t => t.breaker === 'agent-killswitch'))
+  // Agent emballé RÉCENT (dans la fenêtre) → trip malgré la staleness.
+  const fresh = [ev({ type: 'agent', sender: 'actif', ts: 10_000_000 - 1_000, payload: { turns: 99 } })]
+  check('#L70 agent récent → trip malgré staleness',
+    evaluateBreakers(fresh, cfg, { now: NOW, agentStalenessMs: STALE }).trips.some(t => t.breaker === 'agent-killswitch'))
+}
+
+// ── #L70 : runner applique la staleness (agent périmé → non alerté) ───────────
+{
+  const NOW = () => 10_000_000
+  const staleAgent = [ev({ type: 'agent', sender: 'mort', ts: 500, payload: { durationMs: 999_999 } })]
+  const r = runDisjoncteurOnce('/ws', cfg, {
+    readEvents: () => staleAgent,
+    writeFile: () => {},
+    appendLine: () => {},
+    knownTrips: new Set<string>(),
+    now: NOW,
+    agentStalenessMs: 30 * 60_000,
+  })
+  check('#L70 runner : agent périmé → safe (kill switch éteint)', !r.trips.some(t => t.breaker === 'agent-killswitch'))
+}
+
+// ── #L70 : readBusEvents ne lit que la QUEUE d'un gros fichier (anti-OOM) ──────
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mangoqa-l70-'))
+  const qa = path.join(tmp, '.mangoqa')
+  fs.mkdirSync(qa, { recursive: true })
+  const pad = 'y'.repeat(250)
+  const lines: string[] = []
+  // ~5 Mo (> MAX_BUS_BYTES 4 Mo) → readBusEvents doit ne lire que la queue.
+  for (let i = 0; i < 20_000; i++) lines.push(JSON.stringify({ type: 'x', sender: `old-${i}`, ts: i, payload: { pad } }))
+  lines.push(JSON.stringify({ type: 'x', sender: 'RECENT', ts: 9_999_999, payload: {} }))
+  fs.writeFileSync(path.join(qa, 'bus-events.jsonl'), lines.join('\n') + '\n', 'utf8')
+  const sizeMb = fs.statSync(path.join(qa, 'bus-events.jsonl')).size / (1024 * 1024)
+  const got = readBusEvents(tmp)
+  check('#L70 readBusEvents : gros fichier lu PARTIELLEMENT (queue)', sizeMb > 4 && got.length > 0 && got.length < 20_001)
+  check('#L70 readBusEvents : la queue garde le plus RÉCENT', got.some(e => e.sender === 'RECENT'))
+  check('#L70 readBusEvents : le TOUT début (old-0) est hors queue', !got.some(e => e.sender === 'old-0'))
+  fs.rmSync(tmp, { recursive: true, force: true })
 }
 
 // ── Bilan ────────────────────────────────────────────────────────────────────
