@@ -6,6 +6,7 @@
 // subscriptionEnv() la neutralise.
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
+import { renderFiles } from './fs-shared.js'
 
 const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation). */
@@ -73,21 +74,6 @@ export function parseFirstJson<T>(raw: string): T | null {
   return null
 }
 
-/** Concatène les fichiers pertinents en un payload borné pour le prompt. */
-function renderFiles(files: AuditContext['files']): string {
-  let out = ''
-  for (const f of files) {
-    const header = `\n----- ${f.path} -----\n`
-    if (out.length + header.length + f.content.length > FILE_PAYLOAD_CAP) {
-      const room = Math.max(0, FILE_PAYLOAD_CAP - out.length - header.length)
-      if (room > 200) out += header + f.content.slice(0, room) + '\n…(tronqué)…\n'
-      break
-    }
-    out += header + f.content
-  }
-  return out
-}
-
 const JSON_CONTRACT = `
 Réponds UNIQUEMENT par un objet JSON valide, sans aucun texte autour :
 {
@@ -125,7 +111,7 @@ export async function auditWithLLM(meta: BranchMeta, ctx: AuditContext): Promise
   const retexBlock = ctx.retex
     ? `\n\nErreurs historiques à vérifier en priorité (Boîte Noire / Retex) :\n${ctx.retex}`
     : ''
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files)}`
+  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files, FILE_PAYLOAD_CAP)}`
 
   try {
     const raw = await askClaude(system, user)

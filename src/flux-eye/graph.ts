@@ -197,6 +197,16 @@ function collectConstants(root: TSNode): SymbolTable {
   return out
 }
 
+/** Table des symboles GLOBALE fusionnée depuis plusieurs arbres (un par fichier) — remplace le
+ *  parse d'un blob concaténé (#R1). Une constante `OBJET.CLÉ` définie dans un fichier et
+ *  utilisée dans un autre reste résolue : on fusionne dans l'ordre des arbres, une définition
+ *  plus tardive écrase la précédente pour une même clé (même effet net que la concaténation). */
+function symbolsFromRoots(roots: TSNode[]): SymbolTable {
+  const out: SymbolTable = new Map()
+  for (const root of roots) for (const [k, v] of collectConstants(root)) out.set(k, v)
+  return out
+}
+
 /** Déclarations `[state, setter] = useState("init" | CONST.X)` d'un arbre (avant filtre de rétention). */
 function collectStateDecls(root: TSNode, symbols: SymbolTable): StateMachine[] {
   const out: StateMachine[] = []
@@ -357,11 +367,18 @@ function extractRegex(f: ProjectFile, machines: StateMachine[]): FilePart {
 // API publique
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Machines de nav d'un arbre déjà parsé + sa table des symboles : on ne retient que les
- * états dont le SETTER est appelé avec une valeur connue (littéral OU constante). */
-function machinesFromRoot(root: TSNode, symbols: SymbolTable): StateMachine[] {
-  const decls = collectStateDecls(root, symbols)
-  const called = new Set(collectCalls(root, symbols).map((c) => c.fn))
+/** Machines de nav agrégées depuis PLUSIEURS arbres (un par fichier) + la table des symboles
+ *  GLOBALE : on ne retient que les états dont le SETTER est appelé (dans N'IMPORTE LEQUEL des
+ *  arbres) avec une valeur connue (littéral OU constante). Remplace `machinesFromRoot` sur un
+ *  blob concaténé (#R1) — un état déclaré dans un fichier et dont le setter n'est appelé que
+ *  depuis d'autres fichiers (cf. le doublon ≥3 sources du test « R2 ») reste une vraie machine. */
+function machinesFromRoots(roots: TSNode[], symbols: SymbolTable): StateMachine[] {
+  const decls: StateMachine[] = []
+  const called = new Set<string>()
+  for (const root of roots) {
+    decls.push(...collectStateDecls(root, symbols))
+    for (const { fn } of collectCalls(root, symbols)) called.add(fn)
+  }
   return decls.filter((d) => called.has(d.setter))
 }
 
@@ -370,39 +387,46 @@ function machinesFromRoot(root: TSNode, symbols: SymbolTable): StateMachine[] {
 export function findStateMachines(allContent: string): StateMachine[] {
   if (!isFluxParserReady()) return []
   const root = parseTsx(allContent).rootNode
-  return machinesFromRoot(root, collectConstants(root))
+  return machinesFromRoots([root], collectConstants(root))
 }
 
-/** Construit le graphe de navigation d'un projet (déterministe). */
+/** Construit le graphe de navigation d'un projet (déterministe).
+ *
+ * #R1 : chaque fichier JS/TS n'est parsé QU'UNE FOIS (plus de blob concaténé re-parsé en
+ * plus des fichiers individuels). L'arbre par fichier sert à la fois à la table des symboles
+ * et aux machines à états GLOBALES (liens inter-fichiers — ex. `WINDOWS.*` défini dans nav.js
+ * et consommé dans App.jsx/WindowManager.jsx) ET à l'extraction locale (screens/targets). */
 export function buildGraph(files: ProjectFile[]): NavGraph {
-  const all = files.map((f) => f.content).join('\n')
   const ready = isFluxParserReady()
-  // Un parse global du blob : table des symboles (constantes de nav) + machines à états.
-  // Les constantes sont GLOBALES (définies dans nav.js, utilisées dans App.jsx) → résolues
-  // pour tous les fichiers à l'extraction.
-  const allRoot = ready ? parseTsx(all).rootNode : null
-  const symbols: SymbolTable = allRoot ? collectConstants(allRoot) : new Map()
-  const machines = allRoot ? machinesFromRoot(allRoot, symbols) : []
+
+  // Un seul parse par fichier JS/TS, réutilisé pour tout ce qui suit. Indexé en parallèle de
+  // `files` (pas par chemin) : deux entrées partageant le même `path` restent parsées et
+  // extraites CHACUNE indépendamment, comme avant (pas de collision de clé).
+  const roots: (TSNode | null)[] = ready
+    ? files.map((f) => (JS_EXT.test(f.path) ? parseTsx(f.content).rootNode : null))
+    : files.map(() => null)
+  const allRoots = roots.filter((r): r is TSNode => r !== null)
+  const symbols: SymbolTable = symbolsFromRoots(allRoots)
+  const machines = machinesFromRoots(allRoots, symbols)
 
   const acc = emptyPart()
-  for (const f of files) {
+  files.forEach((f, i) => {
     // JS/TS dont la STRUCTURE top-level tient → AST (fiable, même avec une scorie JSX
     // profonde). Structure top-level cassée (fragment nu, vraie erreur de syntaxe) ou
     // langage non migré (.vue/.svelte/.html) → repli regex (comportement historique).
-    let part: FilePart
-    if (JS_EXT.test(f.path) && ready) {
-      const tree = parseTsx(f.content)
-      part = topLevelBroken(tree.rootNode) ? extractRegex(f, machines) : extractAst(f, tree.rootNode, machines, symbols)
-    } else {
-      part = extractRegex(f, machines)
-    }
+    const root = roots[i]
+    const part: FilePart = root
+      ? topLevelBroken(root)
+        ? extractRegex(f, machines)
+        : extractAst(f, root, machines, symbols)
+      : extractRegex(f, machines)
     acc.screensRendered.push(...part.screensRendered)
     acc.screenTargets.push(...part.screenTargets)
     acc.windowsRendered.push(...part.windowsRendered)
     acc.windowTargets.push(...part.windowTargets)
     acc.routesRenderedRaw.push(...part.routesRenderedRaw)
     acc.routeTargets.push(...part.routeTargets)
-  }
+  })
 
   return {
     entries: uniq(machines.map((m) => m.init)),

@@ -12,6 +12,7 @@ import path from 'node:path'
 import type { ProjectFile } from '../types.js'
 import { buildGraph, type NavGraph } from './graph.js'
 import { inspectFlux, type FluxObservation } from './eye.js'
+import { walkTree, realWalkFs } from '../fs-shared.js'
 
 export const OBSERVATIONS_FILE = 'flux-observations.json'
 
@@ -20,42 +21,32 @@ const MAX_FILE_CHARS = 24_000
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.git', '.mangoqa', '.snapshots', '.diffs', 'coverage'])
 const SRC_EXT = /\.(tsx|jsx|ts|js|vue|svelte|html)$/
 
-/** Lecture bornée de tout le source d'un projet (full src — indépendant du delta). */
+/** Lecture bornée de tout le source d'un projet (full src — indépendant du delta).
+ *  Implémentée via le `walkTree` partagé (#R3) : un fichier illisible est ignoré SANS
+ *  consommer de place dans le cap `MAX_FILES` (comportement historique). */
 export function readAllSource(projDir: string): ProjectFile[] {
   const out: ProjectFile[] = []
   const roots = [path.join(projDir, 'src'), projDir]
   const start = fs.existsSync(roots[0]) ? roots[0] : roots[1]
-  walk(start, projDir, out)
-  return out
-}
-
-function walk(dir: string, base: string, acc: ProjectFile[]): void {
-  if (acc.length >= MAX_FILES) return
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true })
-  } catch (err) {
-    /* dossier illisible ignoré (fail-open) */
-    console.warn('[mango-qa] flux:', (err as Error)?.message ?? err)
-    return
-  }
-  for (const e of entries) {
-    if (acc.length >= MAX_FILES) return
-    if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue
-    const full = path.join(dir, e.name)
-    if (e.isDirectory()) {
-      walk(full, base, acc)
-    } else if (SRC_EXT.test(e.name)) {
+  walkTree<ProjectFile>(start, projDir, out, {
+    skipDirs: SKIP_DIRS,
+    extRe: SRC_EXT,
+    maxFiles: MAX_FILES,
+    fsx: realWalkFs,
+    visit: (full, rel) => {
       try {
         let content = fs.readFileSync(full, 'utf8')
         if (content.length > MAX_FILE_CHARS) content = content.slice(0, MAX_FILE_CHARS)
-        acc.push({ path: path.relative(base, full).replace(/\\/g, '/'), content })
+        return { path: rel.replace(/\\/g, '/'), content }
       } catch (err) {
         /* fichier illisible ignoré */
         console.warn('[mango-qa] flux:', (err as Error)?.message ?? err)
+        return undefined
       }
-    }
-  }
+    },
+    onError: err => console.warn('[mango-qa] flux:', (err as Error)?.message ?? err),
+  })
+  return out
 }
 
 /** Inspecte un ensemble de fichiers déjà lus (pur côté logique, testable). */
