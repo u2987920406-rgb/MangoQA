@@ -18,6 +18,7 @@ import {
   type BreakerReport,
   type BusEvent,
 } from './disjoncteur.js'
+import { readJsonlTail, readJsonlSince, type JsonlCursor } from '../jsonl.js'
 
 /** Le pont MangoOS exporte ici (cf. kernel-mangoqa-bridge.ts : BUS_EVENTS_FILE). */
 export const BUS_EVENTS_FILE = 'bus-events.jsonl'
@@ -36,46 +37,42 @@ function qaDir(workspace: string): string {
 const MAX_BUS_BYTES = 4 * 1024 * 1024 // 4 Mo lus au maximum par cycle
 const MAX_BUS_EVENTS = 20_000 // borne dure du tableau d'événements gardé en mémoire
 
+/** Garde de forme : seuls les événements bien formés entrent dans l'évaluation. */
+function isBusEvent(e: unknown): e is BusEvent {
+  const v = e as BusEvent
+  return !!v && typeof v.type === 'string' && typeof v.sender === 'string' && typeof v.ts === 'number'
+}
+
 /** Lit le flux du Bus (tolérant : lignes corrompues ignorées). Au-delà de MAX_BUS_BYTES,
- *  ne lit que la queue du fichier (#L70) — allocation bornée quelle que soit sa taille. */
+ *  ne lit que la queue du fichier (#L70) — allocation bornée quelle que soit sa taille.
+ *  Délègue au lecteur JSONL partagé (src/jsonl.ts). */
 export function readBusEvents(workspace: string): BusEvent[] {
   const file = path.join(qaDir(workspace), BUS_EVENTS_FILE)
-  let raw: string
-  try {
-    const size = fs.statSync(file).size
-    if (size <= MAX_BUS_BYTES) {
-      raw = fs.readFileSync(file, 'utf8')
-    } else {
-      // Ne lire que les derniers MAX_BUS_BYTES octets (la queue = les events récents).
-      const fd = fs.openSync(file, 'r')
-      try {
-        const buf = Buffer.alloc(MAX_BUS_BYTES)
-        const read = fs.readSync(fd, buf, 0, MAX_BUS_BYTES, size - MAX_BUS_BYTES)
-        raw = buf.toString('utf8', 0, read)
-      } finally {
-        fs.closeSync(fd)
-      }
-      const nl = raw.indexOf('\n') // la 1ʳᵉ ligne est probablement tronquée → on la jette
-      if (nl >= 0) raw = raw.slice(nl + 1)
-    }
-  } catch {
-    return [] // pas encore de flux → rien à surveiller
-  }
-  const out: BusEvent[] = []
-  for (const line of raw.split('\n')) {
-    const t = line.trim()
-    if (!t) continue
-    try {
-      const e = JSON.parse(t) as BusEvent
-      if (e && typeof e.type === 'string' && typeof e.sender === 'string' && typeof e.ts === 'number') {
-        out.push(e)
-      }
-    } catch {
-      /* ligne partielle/corrompue ignorée */
-    }
-  }
+  const rows = readJsonlTail<BusEvent>(file, { maxBytes: MAX_BUS_BYTES, maxLines: Number.POSITIVE_INFINITY })
+  const out = rows.filter(isBusEvent)
   // Borne dure : si la queue contient énormément de lignes courtes, on ne garde que les plus récentes.
   return out.length > MAX_BUS_EVENTS ? out.slice(-MAX_BUS_EVENTS) : out
+}
+
+/** #Q5 — Lecteur INCRÉMENTAL du flux du Bus pour le polling continu (cycle 5 s).
+ *  Mémorise la position (octets) du dernier cycle et ne lit que les octets NOUVEAUX
+ *  depuis — le cycle nominal coûte un statSync + le delta, plus jamais 4 Mo entiers.
+ *  Le tampon d'événements est borné (MAX_BUS_EVENTS) ; fichier rétréci = rotation →
+ *  reset complet (curseur + tampon) puis relecture bornée de la queue. */
+export function createBusEventsReader(): (workspace: string) => BusEvent[] {
+  const cursor: JsonlCursor = { offset: 0 }
+  let buffer: BusEvent[] = []
+  return (workspace: string): BusEvent[] => {
+    const file = path.join(qaDir(workspace), BUS_EVENTS_FILE)
+    const { entries, reset } = readJsonlSince<BusEvent>(file, cursor, {
+      maxBytes: MAX_BUS_BYTES, // cap 4 Mo conservé comme borne dure par lecture
+      maxLines: Number.POSITIVE_INFINITY,
+    })
+    if (reset) buffer = []
+    for (const e of entries) if (isBusEvent(e)) buffer.push(e)
+    if (buffer.length > MAX_BUS_EVENTS) buffer = buffer.slice(-MAX_BUS_EVENTS)
+    return buffer
+  }
 }
 
 export interface RunnerDeps {
@@ -120,8 +117,9 @@ export function runDisjoncteurOnce(
   try {
     fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, VERDICT_FILE), JSON.stringify(report, null, 2))
-  } catch {
+  } catch (err) {
     /* fail-open : un échec d'écriture du snapshot ne casse pas la surveillance */
+    console.warn('[mango-qa] disjoncteur:', (err as Error)?.message ?? err)
   }
 
   // Journal d'alertes : on n'ajoute QUE les nouveaux disjoncteurs sautés.
@@ -131,8 +129,9 @@ export function runDisjoncteurOnce(
     known.add(sig)
     try {
       appendLine(path.join(dir, ALERTS_FILE), JSON.stringify({ ...trip, alertedAt: now() }))
-    } catch {
+    } catch (err) {
       /* fail-open */
+      console.warn('[mango-qa] disjoncteur:', (err as Error)?.message ?? err)
     }
   }
   // Un disjoncteur réarmé (plus dans les trips) pourra ré-alerter plus tard.
@@ -157,8 +156,11 @@ export function startDisjoncteur(
   // #L70 — anti-spam : un trip DÉJÀ affiché n'est pas re-loggé à chaque cycle (5 s). Sans ce
   // dédup, ~40 trips restaient affichés en boucle → journaux qui explosent + bruit inutile.
   const logged = new Set<string>()
+  // #Q5 — lecture incrémentale : seuls les octets NOUVEAUX depuis le dernier cycle
+  // sont lus (état local du runner : curseur + tampon borné, rotation = reset).
+  const readEvents = createBusEventsReader()
   const tick = (): void => {
-    const report = runDisjoncteurOnce(workspace, cfg, { knownTrips: known, agentStalenessMs: STALE_AGENT_MS })
+    const report = runDisjoncteurOnce(workspace, cfg, { knownTrips: known, agentStalenessMs: STALE_AGENT_MS, readEvents })
     if (!report.safe) {
       for (const t of report.trips) {
         const sig = tripSignature(t)

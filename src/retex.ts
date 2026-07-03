@@ -7,6 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { PhaseSignal, Rejection } from './types.js'
+import { readJsonlTail } from './jsonl.js'
 
 const RETEX_FILE = '.mangoqa-retex.jsonl'
 /** Nombre max d'entrées Retex réinjectées dans un prompt (anti-saturation). */
@@ -39,28 +40,23 @@ export function recordRejection(workspaceDir: string, signal: PhaseSignal, rejec
   }
   try {
     fs.appendFileSync(retexPath(workspaceDir), JSON.stringify(entry) + '\n', 'utf8')
-  } catch {
+  } catch (err) {
     /* le Retex est best-effort : ne jamais casser l'audit pour un échec d'écriture */
+    console.warn('[mango-qa] retex:', (err as Error)?.message ?? err)
   }
 }
 
+/** Bornes de relecture du journal Retex (#Q1) : seuls les rejets RÉCENTS sont
+ *  réinjectés (RETEX_INJECT_CAP = 6 après dédup) — relire tout le fichier à chaque
+ *  audit était la même famille d'OOM que #L70. 1 Mo / 2000 lignes = très large. */
+const RETEX_TAIL_BYTES = 1024 * 1024
+const RETEX_TAIL_LINES = 2_000
+
 function loadAll(workspaceDir: string): RetexEntry[] {
-  try {
-    const raw = fs.readFileSync(retexPath(workspaceDir), 'utf8')
-    const out: RetexEntry[] = []
-    for (const line of raw.split('\n')) {
-      const t = line.trim()
-      if (!t) continue
-      try {
-        out.push(JSON.parse(t) as RetexEntry)
-      } catch {
-        /* ligne corrompue ignorée */
-      }
-    }
-    return out
-  } catch {
-    return []
-  }
+  return readJsonlTail<RetexEntry>(retexPath(workspaceDir), {
+    maxBytes: RETEX_TAIL_BYTES,
+    maxLines: RETEX_TAIL_LINES,
+  })
 }
 
 /** Contraintes préemptives pour un projet : les rejets passés les plus récents

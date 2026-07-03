@@ -21,7 +21,9 @@ function check(name: string, cond: boolean): void {
     console.error(`  ❌ ${name}`)
   }
 }
-const F = (p: string, content: string): ProjectFile => ({ path: p, content })
+// Le « ; » final est REQUIS : sans lui, le parseur TS colle le bloc « { » suivant
+// au corps de l'arrow function (TS1005) — les blocs autonomes de test suivent.
+const F = (p: string, content: string): ProjectFile => ({ path: p, content });
 
 // ── Auto-découverte de la machine à états de nav ─────────────────────────────
 {

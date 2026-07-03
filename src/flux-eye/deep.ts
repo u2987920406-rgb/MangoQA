@@ -16,6 +16,7 @@ import type { ProjectFile, PhaseSignal } from '../types.js'
 import type { NavGraph } from './graph.js'
 import type { FluxObservation } from './eye.js'
 import { askClaude, parseFirstJson } from '../llm.js'
+import { readJsonlTail } from '../jsonl.js'
 
 export const DEEP_OBSERVATIONS_FILE = 'flux-deep-observations.json'
 const FILE_PAYLOAD_CAP = 20_000
@@ -39,17 +40,16 @@ export interface DeepDecision {
   reason: string
 }
 
-/** Lit la queue de workspace/.metrics.jsonl (MangoQA n'a pas de lecteur dedie). */
+/** Cap octets de la queue métrique : 20 lignes utiles tiennent très largement dedans. */
+const METRICS_TAIL_BYTES = 512 * 1024
+
+/** Lit la queue de workspace/.metrics.jsonl via le lecteur JSONL partagé (#Q1 :
+ *  lecture BORNÉE — l'ancienne version relisait le fichier ENTIER pour garder n lignes). */
 export function readMetricsTail(workspace: string, n: number): Array<Record<string, unknown>> {
-  try {
-    const raw = fs.readFileSync(path.join(workspace, '.metrics.jsonl'), 'utf8')
-    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
-    return lines.slice(-n).map(l => {
-      try { return JSON.parse(l) as Record<string, unknown> } catch { return {} }
-    })
-  } catch {
-    return []
-  }
+  return readJsonlTail<Record<string, unknown>>(path.join(workspace, '.metrics.jsonl'), {
+    maxBytes: METRICS_TAIL_BYTES,
+    maxLines: n,
+  })
 }
 
 export function shouldRunDeep(
@@ -219,8 +219,9 @@ export async function runFluxDeep(
     const dir = path.join(projDir, '.mangoqa')
     fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, DEEP_OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
-  } catch {
+  } catch (err) {
     // fail-open
+    console.warn('[mango-qa] flux-tier1:', (err as Error)?.message ?? err)
   }
   return obs
 }

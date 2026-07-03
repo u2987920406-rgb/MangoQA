@@ -43,7 +43,11 @@ export function loadSuiteApp(dir: string): SuiteApp | null {
           })
       : []
     return { id: raw.id, name: raw.name, collections }
-  } catch {
+  } catch (err) {
+    /* manifest absent (ENOENT = dossier non-app, normal) ou corrompu → ignoré, mais tracé */
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.warn('[mango-qa] suite:', (err as Error)?.message ?? err)
+    }
     return null
   }
 }
@@ -54,7 +58,9 @@ export function readSuiteApps(workspaceDir: string): SuiteApp[] {
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(workspaceDir, { withFileTypes: true })
-  } catch {
+  } catch (err) {
+    /* workspace illisible → aucun manifest (fail-open) */
+    console.warn('[mango-qa] suite:', (err as Error)?.message ?? err)
     return out
   }
   for (const e of entries) {
@@ -83,8 +89,9 @@ export function analyzeSuite(workspaceDir: string, deps: SuiteEyeDeps = {}): { o
     const dir = path.join(workspaceDir, '.mangoqa')
     fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, SUITE_OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
-  } catch {
+  } catch (err) {
     // fail-open : un échec d'écriture n'arrête jamais la production.
+    console.warn('[mango-qa] suite:', (err as Error)?.message ?? err)
   }
   return { obs, apps }
 }
