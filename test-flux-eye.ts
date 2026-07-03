@@ -265,5 +265,90 @@ const F = (p: string, content: string): ProjectFile => ({ path: p, content });
   fs.rmSync(tmp, { recursive: true, force: true })
 }
 
+// ── R1 : single-pass buildGraph — liens inter-fichiers SANS blob concaténé ──
+// L'ancien buildGraph parsait le blob concaténé de TOUS les fichiers (table des symboles +
+// machines) PUIS re-parsait chaque fichier individuellement (extraction) — #R1 supprime ce
+// double passage : chaque fichier n'est parsé qu'UNE fois, et symboles/machines sont fusionnés
+// à partir des ASTs par fichier. Ces tests prouvent que la capacité de résolution INTER-fichiers
+// (le but même du blob) survit à la fusion — même graphe qu'avant, sans la double passe.
+{
+  // (a) constantes réparties sur PLUSIEURS fichiers distincts (pas un seul nav.js) : chacune
+  // doit rester résolue partout, preuve que la table de symboles fusionnée couvre bien N fichiers.
+  const files = [
+    F('screens.js', `export const SCREENS = Object.freeze({ HOME: "home", DETAIL: "detail" });`),
+    F('windows.js', `export const WINDOWS = Object.freeze({ SUITE: "suite" });`),
+    F('App.jsx', `
+      import { SCREENS } from "./screens.js";
+      import { WINDOWS } from "./windows.js";
+      const [screen, setScreen] = useState(SCREENS.HOME);
+      if (screen === SCREENS.HOME) return <Home onGo={() => setScreen(SCREENS.DETAIL)} />;
+      if (screen === SCREENS.DETAIL) return <Detail onBack={() => setScreen(SCREENS.HOME)} />;
+      openWindow({ type: WINDOWS.SUITE });
+    `),
+    F('WindowManager.jsx', `
+      import { WINDOWS } from "./windows.js";
+      if (win.type === WINDOWS.SUITE) return <Suite/>;
+    `),
+  ]
+  const g = buildGraph(files)
+  check('R1 : constantes réparties sur 3 fichiers tiers résolues (entrée)', g.entries.includes('home'))
+  check('R1 : constantes réparties → écrans résolus', g.screensRendered.includes('home') && g.screensRendered.includes('detail'))
+  check('R1 : constantes réparties → fenêtre résolue', g.windowsRendered.includes('suite'))
+  check('R1 : constantes réparties → zéro fantôme', inspectFlux(g).counts.measured === 0)
+}
+
+{
+  // (b) état déclaré dans UN fichier, setter appelé depuis QUATRE autres fichiers (étend le cas
+  // ≥3 sources existant) : la machine doit rester "vraie" (setter appelé) même si l'appel n'est
+  // JAMAIS dans le même fichier que la déclaration — preuve que le Set "called" est bien global.
+  const files = [
+    F('App.jsx', `const [screen, setScreen] = useState("home"); if (screen === "dash") return <D/>;`),
+    F('a.jsx', `setScreen("dash")`),
+    F('b.jsx', `setScreen("dash")`),
+    F('c.jsx', `setScreen("dash")`),
+    F('d.jsx', `setScreen("dash")`),
+  ]
+  const g = buildGraph(files)
+  check('R1 : setter appelé depuis 4 fichiers tiers → machine retenue (entrée home)', g.entries.includes('home'))
+  check('R1 : cible "dash" captée malgré 0 appel dans App.jsx', g.screenTargets.filter(e => e.target === 'dash').length === 4)
+}
+
+{
+  // (c) même clé OBJET.CLÉ redéfinie dans deux fichiers avec des valeurs DIFFÉRENTES : la
+  // fusion doit suivre l'ORDRE des fichiers (dernier gagne), comme l'aurait fait un blob
+  // concaténé dans le même ordre (Map.set écrase). Documente un choix de design explicite.
+  const files = [
+    F('first.js', `export const FLAGS = Object.freeze({ MODE: "old" });`),
+    F('second.js', `export const FLAGS = Object.freeze({ MODE: "new" });`),
+    F('App.jsx', `
+      const [screen, setScreen] = useState(FLAGS.MODE);
+      if (screen === FLAGS.MODE) return <X onGo={() => setScreen("next")} />;
+    `),
+  ]
+  const g = buildGraph(files)
+  check('R1 : clé redéfinie → dernier fichier gagne (ordre = ordre des fichiers)', g.entries.includes('new') && !g.entries.includes('old'))
+}
+
+{
+  // (d) un fichier à la structure top-level CASSÉE (repli regex) n'empêche PAS la résolution
+  // des symboles/machines venant des AUTRES fichiers — déjà vrai avec le blob (qui n'était pas
+  // gardé par topLevelBroken), doit rester vrai avec la fusion par-fichier.
+  const files = [
+    F('nav.js', `export const WINDOWS = Object.freeze({ SUITE: "suite" });`),
+    F('broken.jsx', `<<<not valid top level>>>`),
+    F('WindowManager.jsx', `
+      import { WINDOWS } from "./nav.js";
+      if (win.type === WINDOWS.SUITE) return <Suite/>;
+    `),
+    F('App.jsx', `
+      import { WINDOWS } from "./nav.js";
+      openWindow({ type: WINDOWS.SUITE });
+    `),
+  ]
+  const g = buildGraph(files)
+  check('R1 : fichier cassé à côté → symboles des autres fichiers toujours résolus', g.windowsRendered.includes('suite'))
+  check('R1 : fichier cassé à côté → cible toujours résolue', g.windowTargets.some(e => e.target === 'suite'))
+}
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} Auditeur de Flux : ${passed}/${passed + failed} passed`)
 if (failed > 0) process.exit(1)

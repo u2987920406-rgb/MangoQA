@@ -22,6 +22,7 @@ import type { NavGraph } from './flux-eye/graph.js'
 import type { FluxObservation } from './flux-eye/eye.js'
 import { analyzeSuite } from './suite-eye/runner.js'
 import type { SuiteObservation } from './suite-eye/audit.js'
+import { walkTree } from './fs-shared.js'
 
 export const MAX_FILES = 40
 export const MAX_FILE_CHARS = 16_000
@@ -53,22 +54,19 @@ export const realFs: FsLike = {
 }
 
 // ── Lecture bornée des fichiers livrés ───────────────────────────────────────
+const SRC_EXT = /\.(ts|tsx|js|jsx|css|html|json)$/
+
+/** Parcours récursif borné, chemins seuls (contenu lu séparément par `readProjectFiles`).
+ *  Implémenté via le `walkTree` partagé (#R3) — comportement inchangé. */
 export function walkSrc(dir: string, base: string, acc: string[], fsx: FsLike = realFs): void {
-  if (acc.length >= MAX_FILES) return
-  let entries: DirentLike[]
-  try {
-    entries = fsx.readdirSync(dir)
-  } catch (err) {
-    console.warn('[mango-qa] orchestrateur:', (err as Error)?.message ?? err)
-    return
-  }
-  for (const e of entries) {
-    if (acc.length >= MAX_FILES) return
-    if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue
-    const full = path.join(dir, e.name)
-    if (e.isDirectory()) walkSrc(full, base, acc, fsx)
-    else if (/\.(ts|tsx|js|jsx|css|html|json)$/.test(e.name)) acc.push(path.relative(base, full))
-  }
+  walkTree<string>(dir, base, acc, {
+    skipDirs: SKIP_DIRS,
+    extRe: SRC_EXT,
+    maxFiles: MAX_FILES,
+    fsx,
+    visit: (_full, rel) => rel,
+    onError: err => console.warn('[mango-qa] orchestrateur:', (err as Error)?.message ?? err),
+  })
 }
 
 export function readProjectFiles(projDir: string, changedFiles: string[], fsx: FsLike = realFs): ProjectFile[] {

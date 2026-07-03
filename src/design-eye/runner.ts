@@ -17,6 +17,7 @@ import {
 } from './eye.js'
 import { normalizeHex } from './tokens.js'
 import { readJsonlTail } from '../jsonl.js'
+import type { ProjectFile } from '../types.js'
 
 export const OBSERVATIONS_FILE = 'design-observations.json'
 
@@ -45,11 +46,10 @@ export function readLatestBrief(workspace: string, project?: string): DesignCont
   return palette && palette.length > 0 ? { palette } : undefined
 }
 
-/** Un fichier de projet (forme partagée avec les branches d'audit). */
-export interface DesignFile {
-  path: string
-  content: string
-}
+/** Un fichier de projet, pour l'Œil Design — unifié sur `ProjectFile` (#R2 : ce type
+ *  dupliquait auparavant `ProjectFile` de types.ts, champ pour champ). Alias conservé pour
+ *  ne pas casser un éventuel import externe du nom `DesignFile`. */
+export type DesignFile = ProjectFile
 
 const STYLE_EXT = ['.css', '.scss', '.jsx', '.tsx', '.html', '.vue', '.svelte']
 function isStyle(p: string): boolean {
@@ -76,7 +76,7 @@ export function extractDeclaredPalette(css: string): string[] {
 
 /** Construit un contexte design à partir des fichiers de style d'un projet, puis
  * lance l'Œil. La palette déclarée (variables CSS) sert de référence de tokens. */
-export function inspectProjectDesign(files: DesignFile[], brief?: DesignContext['brief']): DesignObservation {
+export function inspectProjectDesign(files: ProjectFile[], brief?: DesignContext['brief']): DesignObservation {
   const styleFiles = files.filter(f => isStyle(f.path))
   const allCss = styleFiles.map(f => f.content).join('\n')
 
@@ -99,7 +99,7 @@ export interface DesignEyeDeps {
  * N'écrit AUCUN verdict, ne renvoie aucun blocage. Renvoie le rapport. */
 export function runDesignEye(
   projDir: string,
-  files: DesignFile[],
+  files: ProjectFile[],
   deps: DesignEyeDeps = {},
   brief?: DesignContext['brief'],
 ): DesignObservation {

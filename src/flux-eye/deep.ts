@@ -17,6 +17,7 @@ import type { NavGraph } from './graph.js'
 import type { FluxObservation } from './eye.js'
 import { askClaude, parseFirstJson } from '../llm.js'
 import { readJsonlTail } from '../jsonl.js'
+import { renderFiles } from '../fs-shared.js'
 
 export const DEEP_OBSERVATIONS_FILE = 'flux-deep-observations.json'
 const FILE_PAYLOAD_CAP = 20_000
@@ -112,20 +113,6 @@ export interface DeepAuditDeps {
   model?: string
 }
 
-function renderFiles(files: ProjectFile[]): string {
-  let out = ''
-  for (const f of files) {
-    const header = `\n----- ${f.path} -----\n`
-    if (out.length + header.length + f.content.length > FILE_PAYLOAD_CAP) {
-      const room = Math.max(0, FILE_PAYLOAD_CAP - out.length - header.length)
-      if (room > 200) out += header + f.content.slice(0, room) + '\n…(tronque)…\n'
-      break
-    }
-    out += header + f.content
-  }
-  return out
-}
-
 function graphSummary(g: NavGraph): string {
   const line = (label: string, xs: string[]) => `${label}: ${xs.length ? xs.join(', ') : '—'}`
   return [
@@ -164,7 +151,7 @@ FAITS DU TIER 0 :
 - questions de convergence : ${tier0.convergence.length ? tier0.convergence.join(' | ') : '—'}
 
 CODE PERTINENT :
-${renderFiles(files)}`
+${renderFiles(files, FILE_PAYLOAD_CAP, '…(tronque)…')}`
 
   try {
     const raw = await askLLM(DEEP_SYSTEM, user)
