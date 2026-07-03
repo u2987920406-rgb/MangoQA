@@ -8,7 +8,7 @@ import {
   type BreakerId,
   type BusEvent,
 } from './src/breakers/disjoncteur.js'
-import { runDisjoncteurOnce, readBusEvents } from './src/breakers/runner.js'
+import { runDisjoncteurOnce, readBusEvents, createBusEventsReader } from './src/breakers/runner.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -288,6 +288,71 @@ function tripIds(events: BusEvent[], c: BreakerConfig = cfg, opts = {}): Breaker
   check('#L70 readBusEvents : gros fichier lu PARTIELLEMENT (queue)', sizeMb > 4 && got.length > 0 && got.length < 20_001)
   check('#L70 readBusEvents : la queue garde le plus RÉCENT', got.some(e => e.sender === 'RECENT'))
   check('#L70 readBusEvents : le TOUT début (old-0) est hors queue', !got.some(e => e.sender === 'old-0'))
+  fs.rmSync(tmp, { recursive: true, force: true })
+}
+
+// ── #Q5 : lecteur incrémental — seuls les octets NOUVEAUX sont lus par cycle ──
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mangoqa-q5-'))
+  const qa = path.join(tmp, '.mangoqa')
+  fs.mkdirSync(qa, { recursive: true })
+  const busFile = path.join(qa, 'bus-events.jsonl')
+  const line = (sender: string, ts: number) => JSON.stringify({ type: 'x', sender, ts, payload: {} }) + '\n'
+
+  const read = createBusEventsReader()
+  // Fichier pas encore créé → [].
+  check('#Q5 incrémental : flux absent → []', read(tmp).length === 0)
+
+  // 1ᵉʳ cycle : tout le fichier.
+  fs.writeFileSync(busFile, line('a', 1) + line('b', 2), 'utf8')
+  const c1 = read(tmp)
+  check('#Q5 incrémental : 1ᵉʳ cycle lit tout', c1.length === 2)
+
+  // 2ᵉ cycle sans écriture : rien de relu, tampon stable.
+  const c2 = read(tmp)
+  check('#Q5 incrémental : rien de neuf → tampon stable', c2.length === 2)
+
+  // Append : SEUL le delta est lu, cumulé au tampon.
+  fs.appendFileSync(busFile, line('c', 3), 'utf8')
+  const c3 = read(tmp)
+  check('#Q5 incrémental : append → événement cumulé', c3.length === 3 && c3[2].sender === 'c')
+
+  // Ligne corrompue + événement mal formé : ignorés, le flux continue.
+  fs.appendFileSync(busFile, '{pas du json\n' + JSON.stringify({ type: 'x' }) + '\n' + line('d', 4), 'utf8')
+  const c4 = read(tmp)
+  check('#Q5 incrémental : corrompu/mal formé ignorés', c4.length === 4 && c4[3].sender === 'd')
+
+  // Fin de fichier en cours d'écriture (pas de \n) : relue une fois complète.
+  fs.appendFileSync(busFile, '{"type":"x","sender":"e"', 'utf8')
+  check('#Q5 incrémental : ligne partielle non consommée', read(tmp).length === 4)
+  fs.appendFileSync(busFile, ',"ts":5,"payload":{}}\n', 'utf8')
+  const c5 = read(tmp)
+  check('#Q5 incrémental : ligne complétée lue au cycle suivant', c5.length === 5 && c5[4].sender === 'e')
+
+  // Rotation : le fichier RÉTRÉCIT → reset complet (curseur + tampon) puis relecture.
+  fs.writeFileSync(busFile, line('rotated', 9), 'utf8')
+  const c6 = read(tmp)
+  check('#Q5 incrémental : rotation → reset complet', c6.length === 1 && c6[0].sender === 'rotated')
+
+  // Le cycle complet du runner fonctionne avec le lecteur incrémental injecté.
+  fs.writeFileSync(
+    busFile,
+    line('ok', 10) +
+      JSON.stringify({ type: 'task', sender: 'x', kind: 'error', ts: 11, payload: {} }) + '\n' +
+      JSON.stringify({ type: 'task', sender: 'x', kind: 'error', ts: 12, payload: {} }) + '\n' +
+      JSON.stringify({ type: 'task', sender: 'x', kind: 'error', ts: 13, payload: {} }) + '\n',
+    'utf8',
+  )
+  const readForRunner = createBusEventsReader()
+  const rep = runDisjoncteurOnce(tmp, cfg, {
+    readEvents: readForRunner,
+    writeFile: () => {},
+    appendLine: () => {},
+    knownTrips: new Set<string>(),
+    now: FROZEN,
+  })
+  check('#Q5 runner : cycle complet avec lecteur incrémental → trip détecté', rep.trips.some(t => t.breaker === 'nightly-circuit'))
+
   fs.rmSync(tmp, { recursive: true, force: true })
 }
 

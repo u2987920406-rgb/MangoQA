@@ -16,6 +16,7 @@ import {
   type DesignObservation,
 } from './eye.js'
 import { normalizeHex } from './tokens.js'
+import { readJsonlTail } from '../jsonl.js'
 
 export const OBSERVATIONS_FILE = 'design-observations.json'
 
@@ -26,27 +27,19 @@ const DESIGN_REFERENCE_EVENT = 'design.reference'
 
 /** Lit la DERNIÈRE référence design (palette Sharingan/Perfect Plan) du flux du
  * Bus, pour ce projet → l'Œil la passe en `brief` et mesure enfin la conformité
- * (briefDrift). Tolérant : flux absent/corrompu → undefined (pas de brief). */
+ * (briefDrift). Tolérant : flux absent/corrompu → undefined (pas de brief).
+ * #Q1 — lecture BORNÉE par la queue (jsonl.ts) : le flux append-only grossit sans
+ * limite, le relire ENTIER à chaque phase menait à la même famille d'OOM que #L70 ;
+ * la dernière référence vit dans les événements récents = la queue suffit. */
 export function readLatestBrief(workspace: string, project?: string): DesignContext['brief'] | undefined {
-  let raw: string
-  try {
-    raw = fs.readFileSync(path.join(workspace, '.mangoqa', BUS_EVENTS_FILE), 'utf8')
-  } catch {
-    return undefined
-  }
+  type BriefEvent = { type?: string; sender?: string; payload?: { project?: string; palette?: unknown } }
+  const rows = readJsonlTail<BriefEvent>(path.join(workspace, '.mangoqa', BUS_EVENTS_FILE))
   let palette: string[] | undefined
-  for (const line of raw.split('\n')) {
-    const t = line.trim()
-    if (!t) continue
-    try {
-      const e = JSON.parse(t) as { type?: string; sender?: string; payload?: { project?: string; palette?: unknown } }
-      if (e.type !== DESIGN_REFERENCE_EVENT) continue
-      if (project && e.payload?.project !== project && e.sender !== project) continue
-      if (Array.isArray(e.payload?.palette) && e.payload!.palette.length > 0) {
-        palette = (e.payload!.palette as unknown[]).filter((c): c is string => typeof c === 'string')
-      }
-    } catch {
-      /* ligne corrompue ignorée */
+  for (const e of rows) {
+    if (e.type !== DESIGN_REFERENCE_EVENT) continue
+    if (project && e.payload?.project !== project && e.sender !== project) continue
+    if (Array.isArray(e.payload?.palette) && e.payload.palette.length > 0) {
+      palette = (e.payload.palette as unknown[]).filter((c): c is string => typeof c === 'string')
     }
   }
   return palette && palette.length > 0 ? { palette } : undefined
@@ -118,8 +111,9 @@ export function runDesignEye(
     const dir = path.join(projDir, '.mangoqa')
     fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
-  } catch {
+  } catch (err) {
     // fail-open : l'Œil n'arrête jamais la production pour un échec d'écriture.
+    console.warn('[mango-qa] œil-design:', (err as Error)?.message ?? err)
   }
   return obs
 }

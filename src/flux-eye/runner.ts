@@ -34,7 +34,9 @@ function walk(dir: string, base: string, acc: ProjectFile[]): void {
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true })
-  } catch {
+  } catch (err) {
+    /* dossier illisible ignoré (fail-open) */
+    console.warn('[mango-qa] flux:', (err as Error)?.message ?? err)
     return
   }
   for (const e of entries) {
@@ -48,8 +50,9 @@ function walk(dir: string, base: string, acc: ProjectFile[]): void {
         let content = fs.readFileSync(full, 'utf8')
         if (content.length > MAX_FILE_CHARS) content = content.slice(0, MAX_FILE_CHARS)
         acc.push({ path: path.relative(base, full).replace(/\\/g, '/'), content })
-      } catch {
+      } catch (err) {
         /* fichier illisible ignoré */
+        console.warn('[mango-qa] flux:', (err as Error)?.message ?? err)
       }
     }
   }
@@ -88,8 +91,9 @@ export function analyzeFlux(projDir: string, deps: FluxEyeDeps = {}): FluxAnalys
     const dir = path.join(projDir, '.mangoqa')
     fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
-  } catch {
+  } catch (err) {
     // fail-open : l'Auditeur n'arrête jamais la production pour un échec d'écriture.
+    console.warn('[mango-qa] flux:', (err as Error)?.message ?? err)
   }
   return { obs, graph, files }
 }

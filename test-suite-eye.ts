@@ -12,7 +12,8 @@ function check(name: string, cond: boolean): void {
   if (cond) passed++
   else { failed++; console.error(`  ❌ ${name}`) }
 }
-const app = (id: string, name: string, collections: SuiteApp['collections']): SuiteApp => ({ id, name, collections })
+// « ; » final requis (parseur TS — bloc autonome « { » qui suit, TS1005).
+const app = (id: string, name: string, collections: SuiteApp['collections']): SuiteApp => ({ id, name, collections });
 
 // ── slugCollection ───────────────────────────────────────────────────────────
 {

@@ -1,4 +1,4 @@
-// Mango QA — runner principal (Audit Fantôme).
+// Mango QA — point d'entrée : CÂBLAGE uniquement (#Q2).
 //
 // Cycle : MangoOS écrit <projet>/.mangoqa/phase-complete.json après chaque phase
 // → Mango QA « entre sans frapper », lance ses 6 branches en parallèle, et
@@ -6,13 +6,16 @@
 // sentinelle heartbeat (.mangoqa-active) permet à MangoOS de détecter qu'on
 // tourne (isMangoQaActive). Fail-open partout : une défaillance de Mango QA ne
 // doit jamais bloquer la production (MangoOS continue après timeout).
+//
+// Toute la LOGIQUE d'un signal (dédup, verrou, branches, verdict, visages) vit
+// dans src/orchestrator.ts (testable, dépendances injectées). Ici : env, watcher
+// chokidar, heartbeat, Disjoncteur, arrêt propre.
 import 'dotenv/config'
 import fs from 'node:fs'
 import path from 'node:path'
 import chokidar from 'chokidar'
-import type { Branch, PhaseSignal, ProjectFile } from './types.js'
-import { buildVerdict, type BranchResult } from './verdict.js'
-import { loadRetexConstraints, recordRejection } from './retex.js'
+import type { Branch } from './types.js'
+import { createOrchestrator } from './orchestrator.js'
 import { architecture } from './branches/architecture.js'
 import { accessibility } from './branches/accessibility.js'
 import { security } from './branches/security.js'
@@ -20,19 +23,14 @@ import { performance } from './branches/performance.js'
 import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
-import { runDesignEye, readLatestBrief } from './design-eye/runner.js'
-import { analyzeFlux } from './flux-eye/runner.js'
-import { initFluxParser } from './flux-eye/parser.js'
-import { shouldRunDeep, runFluxDeep } from './flux-eye/deep.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
 
 const WORKSPACE = (process.env.MANGOAI_WORKSPACE ?? '').trim()
 const HEARTBEAT_MS = 10_000
-const MAX_FILES = 40
-const MAX_FILE_CHARS = 16_000
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.mangoqa', '.snapshots', '.diffs'])
+/** Auditeur de Suite câblé dans le cycle de phase — opt-in (défaut off = comportement historique). */
+const SUITE_EYE = (process.env.SUITE_EYE ?? '').trim().toLowerCase() === 'on'
 
 if (!WORKSPACE || !fs.existsSync(WORKSPACE)) {
   console.error(`[mango-qa] MANGOAI_WORKSPACE introuvable : "${WORKSPACE}". Vérifie .env.`)
@@ -53,146 +51,19 @@ function beat(): void {
   }
 }
 
-// ── Lecture bornée des fichiers livrés ───────────────────────────────────────
-function walkSrc(dir: string, base: string, acc: string[]): void {
-  if (acc.length >= MAX_FILES) return
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return
-  }
-  for (const e of entries) {
-    if (acc.length >= MAX_FILES) return
-    if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue
-    const full = path.join(dir, e.name)
-    if (e.isDirectory()) walkSrc(full, base, acc)
-    else if (/\.(ts|tsx|js|jsx|css|html|json)$/.test(e.name)) acc.push(path.relative(base, full))
-  }
-}
-
-function readProjectFiles(projDir: string, changedFiles: string[]): ProjectFile[] {
-  let rel: string[]
-  if (changedFiles && changedFiles.length > 0) {
-    rel = changedFiles.filter(f => !f.split(/[\\/]/).some(seg => SKIP_DIRS.has(seg)))
-  } else {
-    rel = []
-    walkSrc(path.join(projDir, 'src'), projDir, rel)
-    if (rel.length === 0) walkSrc(projDir, projDir, rel)
-  }
-  const out: ProjectFile[] = []
-  for (const r of rel.slice(0, MAX_FILES)) {
-    const abs = path.join(projDir, r)
-    try {
-      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue
-      let content = fs.readFileSync(abs, 'utf8')
-      if (content.length > MAX_FILE_CHARS) content = content.slice(0, MAX_FILE_CHARS) + '\n…(tronqué)…'
-      out.push({ path: r.replace(/\\/g, '/'), content })
-    } catch {
-      /* fichier illisible ignoré */
-    }
-  }
-  return out
-}
-
-// ── Traitement d'un signal de phase ──────────────────────────────────────────
-const lastHandled = new Map<string, string>() // projectDir → timestamp traité
-const inFlight = new Set<string>() // verrou anti-chevauchement par projet
-
-async function handleSignal(signalFile: string): Promise<void> {
-  let signal: PhaseSignal
-  try {
-    signal = JSON.parse(fs.readFileSync(signalFile, 'utf8')) as PhaseSignal
-  } catch {
-    return // signal partiel/illisible — chokidar awaitWriteFinish limite déjà ce cas
-  }
-  const projDir = signal.projectDir
-  if (!projDir || !fs.existsSync(projDir)) return
-
-  // Dédup (add + change pour la même écriture) + verrou.
-  if (lastHandled.get(projDir) === signal.timestamp) return
-  if (inFlight.has(projDir)) return
-  inFlight.add(projDir)
-  lastHandled.set(projDir, signal.timestamp)
-
-  const t0 = Date.now()
-  console.log(`\n[mango-qa] 🛡️  Audit « ${signal.projectName} » — phase « ${signal.phase} » (tentative ${signal.retryCount})`)
-
-  try {
-    const files = readProjectFiles(projDir, signal.changedFiles ?? [])
-    const retex = loadRetexConstraints(WORKSPACE, signal)
-
-    const results: BranchResult[] = await Promise.all(
-      BRANCHES.map(async branch => {
-        const relevant = branch.relevant(files)
-        const finding = await branch.audit({ signal, files: relevant, retex })
-        const icon = finding.status === 'fail' ? '🔴' : finding.status === 'pass' ? '🟢' : '⚪'
-        console.log(`  ${icon} ${branch.emoji} ${branch.label}: ${finding.summary}`)
-        return { branch, finding }
-      }),
-    )
-
-    const verdict = buildVerdict(results, signal.retryCount)
-    const qaDir = path.join(projDir, '.mangoqa')
-    if (!fs.existsSync(qaDir)) fs.mkdirSync(qaDir, { recursive: true })
-    fs.writeFileSync(path.join(qaDir, 'audit-verdict.json'), JSON.stringify(verdict, null, 2), 'utf8')
-
-    // Visage 3 — l'Œil Design : mesure déterministe (contraste/tokens/conformité)
-    // sur les mêmes fichiers. Écrit ses observations À CÔTÉ du verdict, ne le
-    // modifie jamais, ne bloque jamais (souple). Fail-open.
-    try {
-      // La cible (palette Sharingan/Perfect Plan) vient du flux du Bus, publiée
-      // par MangoOS → l'Œil mesure désormais la conformité au brief (briefDrift).
-      const brief = readLatestBrief(WORKSPACE, signal.projectName)
-      const eye = runDesignEye(projDir, files, {}, brief)
-      const visual = eye.counts.measured > 0 ? `👁️  ${eye.summary}` : '👁️  cohérence visuelle OK'
-      console.log(`  ${visual}`)
-    } catch {
-      /* l'Œil n'arrête jamais la production */
-    }
-
-    // Auditeur de Flux — mesure déterministe du CHEMIN HUMAIN (écrans fantômes,
-    // surfaces inatteignables) sur tout le source du projet. Écrit ses observations
-    // À CÔTÉ du verdict, ne le modifie jamais, ne bloque jamais (conseil). Fail-open.
-    try {
-      await initFluxParser() // pré-charge le moteur AST (idempotent) ; fail-open via ce try
-      const { obs: flux, graph: fluxGraph, files: fluxFiles } = analyzeFlux(projDir, {})
-      console.log(`  🧭 ${flux.counts.measured > 0 || flux.counts.convergence > 0 ? flux.summary : 'flux cohérent'}`)
-      // Tier 1 (conseil, LLM, cost-aware) : seulement si un declencheur s'arme.
-      const deepDecision = shouldRunDeep(fluxGraph, flux, signal, { workspace: WORKSPACE })
-      if (deepDecision.run) {
-        const deep = await runFluxDeep(projDir, fluxGraph, flux, fluxFiles, signal, {})
-        console.log(`  🧭+ Tier 1 (${deepDecision.reason}) → ${deep.summary}`)
-      }
-    } catch {
-      /* l'Auditeur n'arrête jamais la production */
-    }
-
-    if (verdict.verdict === 'red' && verdict.rejection) {
-      recordRejection(WORKSPACE, signal, verdict.rejection)
-      console.log(`[mango-qa] 🔴 Feu Rouge (${verdict.rejection.branch}) en ${Date.now() - t0}ms → ${verdict.rejection.corrective_action}`)
-    } else {
-      console.log(`[mango-qa] ✅ Feu Vert en ${Date.now() - t0}ms`)
-    }
-  } catch (err) {
-    console.error('[mango-qa] audit:', err instanceof Error ? err.message : err)
-    // Fail-open : on n'écrit pas de verdict → MangoOS continue après timeout.
-  } finally {
-    inFlight.delete(projDir)
-  }
-}
-
 // ── Démarrage ────────────────────────────────────────────────────────────────
 beat()
 setInterval(beat, HEARTBEAT_MS)
+
+const orchestrator = createOrchestrator({ workspace: WORKSPACE, branches: BRANCHES, suiteEye: SUITE_EYE })
 
 const pattern = path.join(WORKSPACE, '*', '.mangoqa', 'phase-complete.json').replace(/\\/g, '/')
 const watcher = chokidar.watch(pattern, {
   ignoreInitial: true, // ne pas rejouer un signal périmé au boot
   awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
 })
-watcher.on('add', f => void handleSignal(f))
-watcher.on('change', f => void handleSignal(f))
+watcher.on('add', f => void orchestrator.handleSignal(f))
+watcher.on('change', f => void orchestrator.handleSignal(f))
 
 // ── Visage 1 : le Disjoncteur (réflexes durs, zéro LLM) ──────────────────────
 // Surveille en continu le flux du Bus (.mangoqa/bus-events.jsonl, exporté par le
@@ -200,7 +71,9 @@ watcher.on('change', f => void handleSignal(f))
 // Indépendant du watcher d'audit : les deux visages tournent côte à côte.
 const stopDisjoncteur = startDisjoncteur(WORKSPACE)
 
-console.log(`[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design + 🧭 Auditeur de Flux`)
+console.log(
+  `[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design + 🧭 Auditeur de Flux${SUITE_EYE ? ' + 🧩 Auditeur de Suite' : ''}`,
+)
 console.log(`[mango-qa] workspace : ${WORKSPACE}`)
 console.log(`[mango-qa] sentinelle : ${sentinelPath}`)
 console.log('[mango-qa] en attente de phase-complete.json…')
@@ -208,8 +81,11 @@ console.log('[mango-qa] en attente de phase-complete.json…')
 function shutdown(): void {
   try {
     fs.unlinkSync(sentinelPath)
-  } catch {
-    /* déjà absente */
+  } catch (err) {
+    /* déjà absente = normal ; toute autre erreur est tracée */
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.warn('[mango-qa] shutdown:', (err as Error)?.message ?? err)
+    }
   }
   stopDisjoncteur()
   void watcher.close()
