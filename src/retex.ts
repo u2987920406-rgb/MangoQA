@@ -13,7 +13,7 @@ const RETEX_FILE = '.mangoqa-retex.jsonl'
 /** Nombre max d'entrées Retex réinjectées dans un prompt (anti-saturation). */
 const RETEX_INJECT_CAP = 6
 
-interface RetexEntry {
+export interface RetexEntry {
   ts: string
   projectName: string
   phase: string
@@ -23,7 +23,9 @@ interface RetexEntry {
   rule_ref: string
 }
 
-function retexPath(workspaceDir: string): string {
+/** Exporté pour l'Observateur-Conseil (observer-runner.ts, #D2a) : même fichier,
+ *  lu en tail borné mais avec une fenêtre plus large que `loadRetexConstraints`. */
+export function retexPath(workspaceDir: string): string {
   return path.join(workspaceDir, RETEX_FILE)
 }
 

@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx test-disjoncteur.ts && tsx test-design-eye.ts && tsx test-flux-eye.ts && tsx test-flux-deep.ts && tsx test-suite-eye.ts && tsx src/test-jsonl.ts && tsx src/test-orchestrator.ts && tsx src/test-verdict.ts && tsx src/test-fs-shared.ts && tsx src/test-observer.ts"
+    "test": "tsx test-disjoncteur.ts && tsx test-design-eye.ts && tsx test-flux-eye.ts && tsx test-flux-deep.ts && tsx test-suite-eye.ts && tsx src/test-jsonl.ts && tsx src/test-orchestrator.ts && tsx src/test-verdict.ts && tsx src/test-fs-shared.ts && tsx src/test-observer.ts && tsx src/test-observer-runner.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.173",
