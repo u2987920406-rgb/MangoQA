@@ -23,6 +23,7 @@ import { performance } from './branches/performance.js'
 import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
+import { runObserver, observerEnabled } from './observer-runner.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -31,6 +32,9 @@ const WORKSPACE = (process.env.MANGOAI_WORKSPACE ?? '').trim()
 const HEARTBEAT_MS = 10_000
 /** Auditeur de Suite câblé dans le cycle de phase — opt-in (défaut off = comportement historique). */
 const SUITE_EYE = (process.env.SUITE_EYE ?? '').trim().toLowerCase() === 'on'
+/** Visage 2 — Observateur-Conseil : opt-in (QA_OBSERVER=on), défaut OFF = zéro lecture,
+ *  zéro écriture, zéro log (comportement historique inchangé). */
+const OBSERVER_ON = observerEnabled()
 
 if (!WORKSPACE || !fs.existsSync(WORKSPACE)) {
   console.error(`[mango-qa] MANGOAI_WORKSPACE introuvable : "${WORKSPACE}". Vérifie .env.`)
@@ -55,6 +59,10 @@ function beat(): void {
 beat()
 setInterval(beat, HEARTBEAT_MS)
 
+// Visage 2 — Observateur-Conseil : un run au boot (constat sur l'historique déjà là),
+// gaté strictement — gate OFF = cette ligne ne fait RIEN (pas d'appel à runObserver).
+if (OBSERVER_ON) runObserver(WORKSPACE)
+
 const orchestrator = createOrchestrator({ workspace: WORKSPACE, branches: BRANCHES, suiteEye: SUITE_EYE })
 
 const pattern = path.join(WORKSPACE, '*', '.mangoqa', 'phase-complete.json').replace(/\\/g, '/')
@@ -62,8 +70,14 @@ const watcher = chokidar.watch(pattern, {
   ignoreInitial: true, // ne pas rejouer un signal périmé au boot
   awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
 })
-watcher.on('add', f => void orchestrator.handleSignal(f))
-watcher.on('change', f => void orchestrator.handleSignal(f))
+async function handleAndObserve(f: string): Promise<void> {
+  await orchestrator.handleSignal(f)
+  // Après délégation à l'orchestrateur : nouveau constat sur l'historique à jour.
+  // Gaté (QA_OBSERVER) — OFF = aucun appel, comportement historique inchangé.
+  if (OBSERVER_ON) runObserver(WORKSPACE)
+}
+watcher.on('add', f => void handleAndObserve(f))
+watcher.on('change', f => void handleAndObserve(f))
 
 // ── Visage 1 : le Disjoncteur (réflexes durs, zéro LLM) ──────────────────────
 // Surveille en continu le flux du Bus (.mangoqa/bus-events.jsonl, exporté par le
@@ -72,7 +86,7 @@ watcher.on('change', f => void orchestrator.handleSignal(f))
 const stopDisjoncteur = startDisjoncteur(WORKSPACE)
 
 console.log(
-  `[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design + 🧭 Auditeur de Flux${SUITE_EYE ? ' + 🧩 Auditeur de Suite' : ''}`,
+  `[mango-qa] 🥭 Mango QA actif — ${BRANCHES.length} branches + ⚡ Disjoncteur + 👁️ Œil Design + 🧭 Auditeur de Flux${SUITE_EYE ? ' + 🧩 Auditeur de Suite' : ''}${OBSERVER_ON ? ' + 🔭 Observateur-Conseil' : ''}`,
 )
 console.log(`[mango-qa] workspace : ${WORKSPACE}`)
 console.log(`[mango-qa] sentinelle : ${sentinelPath}`)
