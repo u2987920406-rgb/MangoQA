@@ -77,6 +77,41 @@ function tripIds(events: BusEvent[], c: BreakerConfig = cfg, opts = {}): Breaker
   check('progress n’interrompt pas la série → trip', tripIds(withNoise).includes('nightly-circuit'))
 }
 
+// ── #11 (constat A) : comptage PAR sender/projet, pas global ────────────────
+{
+  // Projet A enchaîne 3 échecs ; un SUCCÈS du projet B, entrelacé, ne doit PAS
+  // remettre à zéro la série du projet A (c'était le bug avant #11).
+  const interleaved = [
+    ev({ type: 'task', sender: 'projet-A', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-B', kind: 'success' }),
+    ev({ type: 'task', sender: 'projet-A', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-B', kind: 'success' }),
+    ev({ type: 'task', sender: 'projet-A', kind: 'error' }),
+  ]
+  const r = evaluateBreakers(interleaved, cfg, { now: FROZEN })
+  const trip = r.trips.find(t => t.breaker === 'nightly-circuit')
+  check('#11 sender entrelacé : projet A en échec chronique → trip malgré succès de B', !!trip)
+  check('#11 sender entrelacé : trip ciblé sur projet-A', trip?.subject === 'projet-A')
+
+  // Projet B, lui, reste sain (ses 2 succès l'attestent) → pas de trip pour lui.
+  const tripsB = r.trips.filter(t => t.breaker === 'nightly-circuit' && t.subject === 'projet-B')
+  check('#11 sender entrelacé : projet B sain → aucun trip pour lui', tripsB.length === 0)
+
+  // Deux projets en échec chronique EN MÊME TEMPS → 2 trips distincts (comme le kill switch).
+  const twoBroken = [
+    ev({ type: 'task', sender: 'projet-A', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-A', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-A', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-B', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-B', kind: 'error' }),
+    ev({ type: 'task', sender: 'projet-B', kind: 'error' }),
+  ]
+  const r2 = evaluateBreakers(twoBroken, cfg, { now: FROZEN })
+  const trips2 = r2.trips.filter(t => t.breaker === 'nightly-circuit')
+  check('#11 2 projets en échec chronique → 2 trips distincts', trips2.length === 2)
+  check('#11 subjects triés (projet-A, projet-B)', trips2[0].subject === 'projet-A' && trips2[1].subject === 'projet-B')
+}
+
 // ── 2. Garde-fou coût ────────────────────────────────────────────────────────
 {
   const cheap = [ev({ type: 'llm', sender: 'brain', payload: { costUsd: 2 } })]
@@ -104,26 +139,36 @@ function tripIds(events: BusEvent[], c: BreakerConfig = cfg, opts = {}): Breaker
   )
 }
 
-// ── 3. Verrou régression ─────────────────────────────────────────────────────
+// ── 3. Verrou régression — #11 (constat B) : INERTE par défaut ──────────────
+// Rien n'émet `payload.score` sur un event `qa.audit*` aujourd'hui (côté MangoOS,
+// ChatTurnOutcome n'a que cost/turns/duration, QAVerdict n'a pas de score
+// numérique) → gaté OFF par défaut (`regressionLockEnabled: false`) pour ne pas
+// le compter comme actif silencieusement. On teste explicitement les deux états.
 {
-  const good = [ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.9 } })]
-  check('score 0.9 ≥ seuil → pas de trip', !tripIds(good).includes('regression-lock'))
-
   const bad = [ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.4 } })]
-  check('score 0.4 < seuil 0.6 → trip', tripIds(bad).includes('regression-lock'))
+  check(
+    '#11 défaut (regressionLockEnabled=false) : score bas → PAS de trip (inerte)',
+    !tripIds(bad).includes('regression-lock'),
+  )
+  check('#11 défaut : DEFAULT_BREAKER_CONFIG.regressionLockEnabled === false', DEFAULT_BREAKER_CONFIG.regressionLockEnabled === false)
+
+  const enabledCfg: BreakerConfig = { ...cfg, regressionLockEnabled: true }
+  const good = [ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.9 } })]
+  check('activé : score 0.9 ≥ seuil → pas de trip', !tripIds(good, enabledCfg).includes('regression-lock'))
+  check('activé : score 0.4 < seuil 0.6 → trip', tripIds(bad, enabledCfg).includes('regression-lock'))
 
   // Le DERNIER audit compte (régression récente prime).
   const evolving = [
     { ...ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.9 } }), ts: 10 },
     { ...ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.3 } }), ts: 20 },
   ]
-  check('dernier audit (0.3) prime → trip', tripIds(evolving).includes('regression-lock'))
+  check('activé : dernier audit (0.3) prime → trip', tripIds(evolving, enabledCfg).includes('regression-lock'))
 
   const recovered = [
     { ...ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.3 } }), ts: 10 },
     { ...ev({ type: 'qa.audit', sender: 'qa', payload: { score: 0.8 } }), ts: 20 },
   ]
-  check('dernier audit (0.8) rétabli → pas de trip', !tripIds(recovered).includes('regression-lock'))
+  check('activé : dernier audit (0.8) rétabli → pas de trip', !tripIds(recovered, enabledCfg).includes('regression-lock'))
 }
 
 // ── 4. Dérive mémoire ────────────────────────────────────────────────────────
@@ -183,7 +228,12 @@ function tripIds(events: BusEvent[], c: BreakerConfig = cfg, opts = {}): Breaker
   ]
   const r = evaluateBreakers(storm, cfg, { now: FROZEN })
   check('tempête → non safe', r.safe === false)
-  check('tempête → 3 disjoncteurs', r.trips.length === 3)
+  // #11 : regression-lock est INERTE par défaut (constat B) → 2 disjoncteurs
+  // sautent avec la config par défaut (nightly-circuit + agent-killswitch), pas 3.
+  check('tempête (défaut) → 2 disjoncteurs (regression-lock inerte)', r.trips.length === 2)
+
+  const rEnabled = evaluateBreakers(storm, { ...cfg, regressionLockEnabled: true }, { now: FROZEN })
+  check('tempête (regression-lock activé) → 3 disjoncteurs', rEnabled.trips.length === 3)
 }
 
 // ── Déterminisme : deux passes identiques ⇒ rapports identiques ───────────────
@@ -354,6 +404,61 @@ function tripIds(events: BusEvent[], c: BreakerConfig = cfg, opts = {}): Breaker
   check('#Q5 runner : cycle complet avec lecteur incrémental → trip détecté', rep.trips.some(t => t.breaker === 'nightly-circuit'))
 
   fs.rmSync(tmp, { recursive: true, force: true })
+}
+
+// ── #11 (constat C) : liveness du Bus — flux jamais vu vs flux tari ──────────
+{
+  const empty = evaluateBreakers([], cfg, { now: FROZEN, busStaleThresholdMs: 1000 })
+  check('#11 liveness : flux vide → pas stale (jamais démarré ≠ panne)', empty.busLiveness.stale === false)
+  check('#11 liveness : flux vide → lastEventTs null', empty.busLiveness.lastEventTs === null)
+
+  const recent = [ev({ type: 'x', sender: 'a', ts: FROZEN() - 10 })]
+  const r1 = evaluateBreakers(recent, cfg, { now: FROZEN, busStaleThresholdMs: 1000 })
+  check('#11 liveness : dernier event récent (< seuil) → pas stale', r1.busLiveness.stale === false)
+
+  const old = [ev({ type: 'x', sender: 'a', ts: FROZEN() - 5000 })]
+  const r2 = evaluateBreakers(old, cfg, { now: FROZEN, busStaleThresholdMs: 1000 })
+  check('#11 liveness : dernier event ancien (> seuil) → stale', r2.busLiveness.stale === true)
+  check('#11 liveness : ageMs cohérent', r2.busLiveness.ageMs === 5000)
+
+  // Défaut (busStaleThresholdMs non fourni → Infinity) : jamais stale, rétrocompat.
+  const r3 = evaluateBreakers(old, cfg, { now: FROZEN })
+  check('#11 liveness : sans seuil (défaut Infinity) → jamais stale (rétrocompat)', r3.busLiveness.stale === false)
+
+  // La liveness ne doit JAMAIS influencer `safe` — signal séparé des disjoncteurs.
+  check('#11 liveness : stale ne change pas `safe`', r2.safe === true && r2.trips.length === 0)
+}
+
+// ── #11 (constat C) : le runner alerte une fois puis se tait tant que stale ──
+{
+  const NOW_BASE = 10_000_000
+  let now = NOW_BASE
+  const staleEvents = [ev({ type: 'x', sender: 'pont', ts: NOW_BASE })]
+  const warns: string[] = []
+  const origWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    warns.push(String(args[0]))
+  }
+  try {
+    // Import dynamique du runner (déjà importé en tête de fichier via startDisjoncteur
+    // non utilisé ici — on exerce runDisjoncteurOnce directement à seuil serré).
+    const cycle = () =>
+      runDisjoncteurOnce('/ws', cfg, {
+        readEvents: () => staleEvents,
+        writeFile: () => {},
+        appendLine: () => {},
+        knownTrips: new Set<string>(),
+        now: () => now,
+        busStaleThresholdMs: 100,
+      })
+    const rep1 = cycle()
+    check('#11 runner : flux tari détecté (busLiveness.stale)', rep1.busLiveness.stale === false) // au t0, âge = 0 < seuil
+    now = NOW_BASE + 5000 // 5s plus tard, aucun nouvel event → tari
+    const rep2 = cycle()
+    check('#11 runner : après silence prolongé → busLiveness.stale', rep2.busLiveness.stale === true)
+  } finally {
+    console.warn = origWarn
+  }
 }
 
 // ── Bilan ────────────────────────────────────────────────────────────────────

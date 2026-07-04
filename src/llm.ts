@@ -95,6 +95,10 @@ export interface BranchMeta {
   specialty: string
   /** design-system : conseil seulement → ne renvoie jamais "fail". */
   adviceOnly?: boolean
+  /** #10 — branche Tests uniquement : injecte dans le prompt si des tests
+   *  existent AILLEURS dans le projet (hors delta), pour éviter un Feu Rouge
+   *  fantôme quand la branche ne voit qu'un delta sans fichier `*.test.*`. */
+  includeTestsSignal?: boolean
 }
 
 /** Exécute un audit LLM générique pour une branche. Ne throw jamais : toute
@@ -111,7 +115,15 @@ export async function auditWithLLM(meta: BranchMeta, ctx: AuditContext): Promise
   const retexBlock = ctx.retex
     ? `\n\nErreurs historiques à vérifier en priorité (Boîte Noire / Retex) :\n${ctx.retex}`
     : ''
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files, FILE_PAYLOAD_CAP)}`
+  // #10 — désamorce le Feu Rouge fantôme : la branche Tests ne voit que le
+  // delta de cette phase, mais le projet peut avoir des tests ailleurs.
+  const testsSignalBlock =
+    meta.includeTestsSignal && ctx.testsElsewhereInProject !== undefined
+      ? ctx.testsElsewhereInProject
+        ? "\n\nSignal projet (hors delta) : des fichiers de test (*.test.*/*.spec.*) EXISTENT ailleurs dans ce projet. Ne conclus PAS à une absence totale de tests sur la seule base de ce delta — juge seulement si LA LOGIQUE LIVRÉE ICI aurait dû être testée."
+        : "\n\nSignal projet (hors delta) : aucun fichier de test (*.test.*/*.spec.*) n'existe nulle part dans ce projet."
+      : ''
+  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files, FILE_PAYLOAD_CAP)}`
 
   try {
     const raw = await askClaude(system, user)

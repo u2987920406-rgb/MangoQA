@@ -53,22 +53,53 @@ export interface BreakerTrip {
   lastEventTs: number
 }
 
-/** Rapport global : sûr tant qu'aucun disjoncteur n'a sauté. */
+/** #11 (constat C) — âge du DERNIER événement du flux lui-même (pas son
+ *  contenu). Un pont MangoOS mort (qui cesse d'écrire `bus-events.jsonl`) est
+ *  sinon indistinguable d'un système calme : `safe:true` éternel et silencieux.
+ *  `stale` ne devient vrai QUE si le flux a déjà porté au moins un événement —
+ *  un flux jamais vu (bridge jamais démarré) n'est pas une "panne en cours",
+ *  c'est un état de démarrage normal et n'est pas signalé ici. */
+export interface BusLiveness {
+  /** true si des événements ont déjà été vus ET que le dernier date de plus de
+   *  `busStaleThresholdMs`. */
+  stale: boolean
+  /** ts du dernier événement vu, ou null si le flux est vide. */
+  lastEventTs: number | null
+  /** now - lastEventTs, ou null si le flux est vide. */
+  ageMs: number | null
+}
+
+/** Rapport global : sûr tant qu'aucun disjoncteur n'a sauté. `busLiveness` est
+ *  un signal SÉPARÉ (pas un disjoncteur : il ne change jamais `safe`, pour ne
+ *  pas perturber le canal d'arrêt MangoOS existant qui lit `safe`) — c'est au
+ *  runner de l'exploiter pour alerter (cf. `runner.ts`). */
 export interface BreakerReport {
   safe: boolean
   trips: BreakerTrip[]
   evaluatedAt: number
   eventCount: number
+  busLiveness: BusLiveness
 }
 
 /** Seuils. Bornés et explicites — un disjoncteur n'a pas de réglage caché. */
 export interface BreakerConfig {
-  /** 1. échecs consécutifs tolérés avant pause. */
+  /** 1. échecs consécutifs tolérés avant pause (compté PAR sender — cf. #11). */
   maxConsecutiveFailures: number
   /** 2. plafond de coût cumulé sur la fenêtre (USD). */
   nightlyCostCeilingUsd: number
   /** 3. score d'audit minimal (0..1) sous lequel on bloque le commit. */
   minAuditScore: number
+  /** 3bis. #11 (revue 2026-07-03, constat B) — le verrou de régression lit
+   *  `payload.score` sur un event `qa.audit*`, mais RIEN n'émet ce score
+   *  aujourd'hui : `ChatTurnOutcome` (kernel-chat-bridge.ts, MangoOS) ne porte
+   *  que cost/turns/duration, et `QAVerdict` n'a qu'un statut red/green, pas de
+   *  score numérique. Le réflexe ne se déclenche donc JAMAIS en pratique tant
+   *  qu'aucune source n'émet ce score sur le Bus. Plutôt que de le compter
+   *  comme actif silencieusement (mensonge d'architecture), il est GATÉ OFF par
+   *  défaut ici et documenté comme INERTE. Le code du réflexe est conservé
+   *  (fonction `regressionLock`, testée) pour être réactivé le jour où une
+   *  source de score fiable existe côté Bus — mettre `true` à ce moment-là. */
+  regressionLockEnabled: boolean
   /** 4. taille max d'un magasin mémoire avant gel. */
   maxMemoryStoreSize: number
   /** 5. bornes d'emballement d'un agent. */
@@ -81,6 +112,7 @@ export const DEFAULT_BREAKER_CONFIG: BreakerConfig = {
   maxConsecutiveFailures: 3,
   nightlyCostCeilingUsd: 5,
   minAuditScore: 0.6,
+  regressionLockEnabled: false,
   maxMemoryStoreSize: 5_000,
   maxAgentTurns: 40,
   maxAgentTokens: 200_000,
@@ -97,6 +129,10 @@ export interface EvaluateOptions {
    *  évite de ré-évaluer et re-logger ~40 agents morts à chaque cycle (spam + OOM heap).
    *  Défaut : Infinity (aucun filtrage — comportement historique, tests inchangés). */
   agentStalenessMs?: number
+  /** #11 (constat C) — seuil au-delà duquel le flux est jugé "tari" (âge du
+   *  dernier événement > ce seuil). Défaut : Infinity (jamais stale — comportement
+   *  historique préservé, tests inchangés). Le runner continu passe un seuil réel. */
+  busStaleThresholdMs?: number
 }
 
 // ── Helpers de lecture défensive du payload ──────────────────────────────────
@@ -109,29 +145,42 @@ function num(v: unknown): number | undefined {
 }
 
 // ── 1. Circuit breaker — N échecs de suite ───────────────────────────────────
-// Compte la série d'échecs LA PLUS RÉCENTE (en partant de la fin), parmi les seuls
-// événements concluants (success/error ; progress/request ignorés). Un succès
-// remet le compteur à zéro : c'est « N échecs de suite », pas « N échecs en tout ».
-function nightlyCircuit(events: BusEvent[], cfg: BreakerConfig): BreakerTrip | null {
-  let streak = 0
-  let lastTs = 0
-  for (let i = events.length - 1; i >= 0; i--) {
-    const k = events[i].kind
-    if (k === 'success') break
-    if (k === 'error') {
-      if (streak === 0) lastTs = events[i].ts
-      streak++
+// #11 (constat A, revue 2026-07-03) — compté PAR sender (clé composite projet/
+// agent : dans le flux réel, `sender` porte déjà le nom du projet pour les
+// events de chat émis par kernel-chat-bridge.ts côté MangoOS). AVANT ce correctif,
+// la série était comptée GLOBALEMENT tous senders confondus : un `success` du
+// projet B remettait à zéro la série d'échecs du projet A dans un flux entrelacé
+// (plusieurs projets tournant en parallèle) → un projet en échec chronique
+// restait invisible. Ici, chaque sender a sa PROPRE série (succès = reset de SA
+// série seulement) ; un trip est émis par sender fautif, comme le kill switch #5.
+function nightlyCircuit(events: BusEvent[], cfg: BreakerConfig): BreakerTrip[] {
+  const streaks = new Map<string, { streak: number; lastTs: number }>()
+  for (const env of events) {
+    if (env.kind !== 'success' && env.kind !== 'error') continue // progress/request : ignorés, n'interrompent pas la série
+    const cur = streaks.get(env.sender) ?? { streak: 0, lastTs: 0 }
+    if (env.kind === 'success') {
+      cur.streak = 0
+    } else {
+      cur.streak++
+      cur.lastTs = env.ts
     }
+    streaks.set(env.sender, cur)
   }
-  if (streak < cfg.maxConsecutiveFailures) return null
-  return {
-    breaker: 'nightly-circuit',
-    action: 'pause-and-alert',
-    reason: `${streak} échecs consécutifs (seuil ${cfg.maxConsecutiveFailures}) — pause et alerte Raf.`,
-    observed: streak,
-    threshold: cfg.maxConsecutiveFailures,
-    lastEventTs: lastTs,
+  const trips: BreakerTrip[] = []
+  for (const [sender, s] of streaks) {
+    if (s.streak < cfg.maxConsecutiveFailures) continue
+    trips.push({
+      breaker: 'nightly-circuit',
+      action: 'pause-and-alert',
+      reason: `${s.streak} échecs consécutifs pour « ${sender} » (seuil ${cfg.maxConsecutiveFailures}) — pause et alerte Raf.`,
+      observed: s.streak,
+      threshold: cfg.maxConsecutiveFailures,
+      subject: sender,
+      lastEventTs: s.lastTs,
+    })
   }
+  trips.sort((a, b) => (a.subject! < b.subject! ? -1 : a.subject! > b.subject! ? 1 : 0))
+  return trips
 }
 
 // ── 2. Garde-fou coût — escalade > plafond/nuit ──────────────────────────────
@@ -283,6 +332,17 @@ function agentKillswitch(
   return trips
 }
 
+// ── Liveness du Bus — constat C (#11) ────────────────────────────────────────
+// Surveille l'ÂGE du dernier événement du FLUX LUI-MÊME, indépendamment de son
+// contenu. Pur : `events` inclut déjà tout ce qu'il faut (ts), `now` est injecté.
+function checkBusLiveness(events: BusEvent[], now: number, staleThresholdMs: number): BusLiveness {
+  if (events.length === 0) return { stale: false, lastEventTs: null, ageMs: null }
+  let lastTs = -Infinity
+  for (const env of events) if (env.ts > lastTs) lastTs = env.ts
+  const ageMs = now - lastTs
+  return { stale: ageMs > staleThresholdMs, lastEventTs: lastTs, ageMs }
+}
+
 // ── Évaluation globale ───────────────────────────────────────────────────────
 /** Passe le flux d'événements dans les 5 disjoncteurs. Pur et déterministe :
  * mêmes événements + même config ⇒ même rapport. */
@@ -295,13 +355,14 @@ export function evaluateBreakers(
   const nowTs = now()
   const windowStart = opts.costWindowStartTs ?? -Infinity
   const stalenessMs = opts.agentStalenessMs ?? Infinity
+  const busStaleThresholdMs = opts.busStaleThresholdMs ?? Infinity
   const trips: BreakerTrip[] = []
 
-  const t1 = nightlyCircuit(events, cfg)
-  if (t1) trips.push(t1)
+  trips.push(...nightlyCircuit(events, cfg))
   const t2 = costGuard(events, cfg, windowStart)
   if (t2) trips.push(t2)
-  const t3 = regressionLock(events, cfg)
+  // #11 (constat B) — inerte par défaut : voir BreakerConfig.regressionLockEnabled.
+  const t3 = cfg.regressionLockEnabled ? regressionLock(events, cfg) : null
   if (t3) trips.push(t3)
   const t4 = memoryDrift(events, cfg)
   if (t4) trips.push(t4)
@@ -312,6 +373,7 @@ export function evaluateBreakers(
     trips,
     evaluatedAt: nowTs,
     eventCount: events.length,
+    busLiveness: checkBusLiveness(events, nowTs, busStaleThresholdMs),
   }
 }
 
