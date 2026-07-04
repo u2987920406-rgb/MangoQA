@@ -89,6 +89,10 @@ export interface RunnerDeps {
   /** #L70 — durée au-delà de laquelle un agent inactif est périmé (kill switch ignoré).
    *  Défaut : Infinity (comportement historique — les tests runner restent inchangés). */
   agentStalenessMs?: number
+  /** #11 (constat C) — seuil de staleness du Bus lui-même. Défaut : Infinity
+   *  (jamais alerté — comportement historique des tests one-shot inchangé).
+   *  `startDisjoncteur` (surveillance continue) passe un seuil réel. */
+  busStaleThresholdMs?: number
 }
 
 /** Un cycle complet : lit le flux, évalue les 5 disjoncteurs, écrit le verdict, et
@@ -100,7 +104,21 @@ export function runDisjoncteurOnce(
   deps: RunnerDeps = {},
 ): BreakerReport {
   const readEvents = deps.readEvents ?? readBusEvents
-  const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
+  const writeFile = deps.writeFile ?? ((f, d) => {
+    // Atomic write: tmp+rename protects against mid-write crashes corrupting critical data
+    const tmp = `${f}.tmp`
+    fs.writeFileSync(tmp, d, 'utf8')
+    try {
+      fs.renameSync(tmp, f)
+    } catch {
+      // Windows may refuse rename if target is briefly held open (antivirus, editor)
+      try {
+        fs.writeFileSync(f, d, 'utf8')
+      } finally {
+        fs.rmSync(tmp, { force: true })
+      }
+    }
+  })
   const appendLine = deps.appendLine ?? ((f, l) => fs.appendFileSync(f, l + '\n', 'utf8'))
   const known = deps.knownTrips ?? new Set<string>()
   const now = deps.now ?? (() => Date.now())
@@ -109,9 +127,10 @@ export function runDisjoncteurOnce(
   // garanti. Défaut : les 12 dernières heures (couvre une nuit), surchargeable.
   const costWindowStartTs = deps.costWindowStartTs ?? now() - 12 * 60 * 60 * 1000
   const agentStalenessMs = deps.agentStalenessMs ?? Infinity
+  const busStaleThresholdMs = deps.busStaleThresholdMs ?? Infinity
 
   const events = readEvents(workspace)
-  const report = evaluateBreakers(events, cfg, { now, costWindowStartTs, agentStalenessMs })
+  const report = evaluateBreakers(events, cfg, { now, costWindowStartTs, agentStalenessMs, busStaleThresholdMs })
 
   const dir = qaDir(workspace)
   try {
@@ -147,6 +166,14 @@ export function runDisjoncteurOnce(
  *  kill switch cesse de le re-déclencher. Borne le nombre de trips vivants → borne les logs. */
 export const STALE_AGENT_MS = 30 * 60_000
 
+// #11 (constat C) — au-delà de 5 min sans le moindre événement NOUVEAU alors que
+// le flux a déjà porté au moins un événement, le pont MangoOS est probablement
+// mort (il a cessé d'écrire bus-events.jsonl) : on ALERTE au lieu de rester
+// silencieusement `safe:true`. 5 min laisse largement passer les creux normaux
+// (entre deux phases) sans faux positif, tout en détectant une vraie panne de pont
+// bien avant la fin d'une nuit de 8 h.
+export const BUS_STALE_MS = 5 * 60_000
+
 export function startDisjoncteur(
   workspace: string,
   cfg: BreakerConfig = DEFAULT_BREAKER_CONFIG,
@@ -156,11 +183,18 @@ export function startDisjoncteur(
   // #L70 — anti-spam : un trip DÉJÀ affiché n'est pas re-loggé à chaque cycle (5 s). Sans ce
   // dédup, ~40 trips restaient affichés en boucle → journaux qui explosent + bruit inutile.
   const logged = new Set<string>()
+  // #11 (constat C) — dédup de l'alerte de liveness, même logique que `logged`.
+  let busStaleAlerted = false
   // #Q5 — lecture incrémentale : seuls les octets NOUVEAUX depuis le dernier cycle
   // sont lus (état local du runner : curseur + tampon borné, rotation = reset).
   const readEvents = createBusEventsReader()
   const tick = (): void => {
-    const report = runDisjoncteurOnce(workspace, cfg, { knownTrips: known, agentStalenessMs: STALE_AGENT_MS, readEvents })
+    const report = runDisjoncteurOnce(workspace, cfg, {
+      knownTrips: known,
+      agentStalenessMs: STALE_AGENT_MS,
+      busStaleThresholdMs: BUS_STALE_MS,
+      readEvents,
+    })
     if (!report.safe) {
       for (const t of report.trips) {
         const sig = tripSignature(t)
@@ -172,6 +206,17 @@ export function startDisjoncteur(
     // Un trip réarmé (plus dans le rapport) est retiré → il pourra ré-alerter s'il resaute.
     const live = new Set(report.trips.map(tripSignature))
     for (const sig of logged) if (!live.has(sig)) logged.delete(sig)
+
+    // #11 (constat C) — liveness du Bus : signal SÉPARÉ des disjoncteurs (ne
+    // touche jamais `report.safe`). Alerté une seule fois tant que ça reste stale.
+    if (report.busLiveness.stale && !busStaleAlerted) {
+      busStaleAlerted = true
+      console.warn(
+        `[mango-qa] ⚠️  BUS SILENCIEUX depuis ${Math.round((report.busLiveness.ageMs ?? 0) / 1000)}s (seuil ${BUS_STALE_MS / 1000}s) — le pont MangoOS a peut-être cessé d'écrire bus-events.jsonl.`,
+      )
+    } else if (!report.busLiveness.stale && busStaleAlerted) {
+      busStaleAlerted = false // le flux a repris → pourra ré-alerter s'il se tarit à nouveau
+    }
   }
   tick()
   const handle = setInterval(tick, intervalMs)

@@ -18,15 +18,33 @@ répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
 MangoOS écrit  <projet>/.mangoqa/phase-complete.json   (PhaseSignal)
         │
         ▼  (chokidar « entre sans frapper »)
-Mango QA  ──►  6 branches en parallèle (cerveau = abonnement Claude Code, $0)
-        │        🏗️ architecture · 🔒 sécurité · ♿ accessibilité
-        │        ⚡ performance · 🧪 tests · 🎨 design-system (conseil)
+Mango QA  ──────────────────────────────────────────────────
+        │   3 VISAGES + Flux/Suite/Observateur (abonnement Claude, $0)
+        │
+        │   🏛️ Visage 1 : JUGE (6 branches d'audit en parallèle)
+        │      🏗️ architecture · 🔒 sécurité · ♿ accessibilité
+        │      ⚡ performance · 🧪 tests · 🎨 design-system (conseil)
+        │      ─► verdicts binaires (Feu Vert/Rouge) dans <projet>/.mangoqa/
+        │
+        │   👀 Visage 2 : OBSERVATEUR-CONSEIL (analyzeEvents, amorce #R-bonus)
+        │      Analyse patterns de rejets récurrents (fenêtre temporelle TODO)
+        │      Aucun garde-fou, pas de verdict — conseils à Raf seulement
+        │      ─► rapport CONSTAT dans <projet>/.mangoqa/observer-report.json
+        │
+        │   🧠 Visage 3 : Flux/Suite (orchestration, retry, apprentissage)
+        │      Relit le Retex (historique) pour affiner les branches
+        │
         ▼
 Mango QA écrit  <projet>/.mangoqa/audit-verdict.json    (QAVerdict)
         │
         └─► si red : journalise dans .mangoqa-retex.jsonl (Boîte Noire)
             et réinjecte préemptivement aux audits suivants.
 ```
+
+**Note technique** : L'Observateur n'exploite pas encore `ts` (timestamps) pour
+les fenêtres temporelles glissantes — actuellement agrégation globale (share =
+part-des-rejets dans l'historique entier, pas part-des-audits). Fenêtre glissante
+réservée pour une future vague.
 
 - **Sentinelle** : `workspace/.mangoqa-active` (heartbeat 10 s) → MangoOS détecte
   automatiquement que Mango QA tourne via `isMangoQaActive()`. Rien à configurer.

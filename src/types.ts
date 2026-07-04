@@ -54,6 +54,11 @@ export interface AuditContext {
   files: ProjectFile[]
   /** Contraintes héritées de la Boîte Noire (Retex) — erreurs passées à éviter. */
   retex: string
+  /** #10 — des fichiers `*.test.*`/`*.spec.*` existent QUELQUE PART dans le
+   *  projet (pas seulement dans le delta `files`/`changedFiles` de cette phase).
+   *  `undefined` si non calculé (rétrocompat des appelants qui ne le fournissent
+   *  pas). Sert à la branche Tests à éviter un Feu Rouge fantôme. */
+  testsElsewhereInProject?: boolean
 }
 
 /** Verdict d'une branche d'audit. */

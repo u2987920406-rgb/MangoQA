@@ -1,11 +1,13 @@
 // Tests de l'orchestrateur (#Q2). Exécution : npx tsx src/test-orchestrator.ts
 // Déterministe, zéro réseau, zéro LLM, zéro disque (fs + runners injectés).
 import path from 'node:path'
-import type { Branch, PhaseSignal, ProjectFile } from './types.js'
+import type { AuditContext, Branch, PhaseSignal, ProjectFile } from './types.js'
 import {
   createOrchestrator,
   readProjectFiles,
   walkSrc,
+  projectHasTests,
+  MAX_FILES,
   type FsLike,
   type OrchestratorRunners,
 } from './orchestrator.js'
@@ -48,7 +50,23 @@ function makeFakeFs(initialFiles: Record<string, string>, dirs: string[] = []): 
     mkdirSync: p => {
       dirSet.add(norm(p))
     },
-    readdirSync: () => [],
+    // #10/#11 — dérivé des clés de `files`/`dirs` (immédiats enfants de `p`),
+    // pour que `projectHasTests`/`walkSrc` (qui parcourent via readdirSync)
+    // puissent réellement trouver quelque chose en test, pas seulement [].
+    readdirSync: p => {
+      const base = norm(p)
+      const seen = new Map<string, boolean>() // name → isDirectory
+      const consider = (full: string) => {
+        if (!full.startsWith(base + '/')) return
+        const rest = full.slice(base.length + 1)
+        const name = rest.split('/')[0]
+        const isDir = rest.includes('/')
+        if (!seen.has(name) || isDir) seen.set(name, seen.get(name) || isDir)
+      }
+      for (const f of files.keys()) consider(f)
+      for (const d of dirSet) consider(d)
+      return [...seen.entries()].map(([name, isDir]) => ({ name, isDirectory: () => isDir }))
+    },
     isFile: p => files.has(norm(p)),
   }
   return { fsx, writes }
@@ -119,8 +137,12 @@ function makeRunners(order: string[], opts: { deep?: boolean } = {}): Orchestrat
   }
 }
 
-function makeBranch(id: string, onAudit?: () => Promise<void>): { branch: Branch; audits: PhaseSignal[] } {
+function makeBranch(
+  id: string,
+  onAudit?: () => Promise<void>,
+): { branch: Branch; audits: PhaseSignal[]; contexts: AuditContext[] } {
   const audits: PhaseSignal[] = []
+  const contexts: AuditContext[] = []
   const branch: Branch = {
     id,
     label: id,
@@ -129,11 +151,12 @@ function makeBranch(id: string, onAudit?: () => Promise<void>): { branch: Branch
     relevant: (files: ProjectFile[]) => files,
     audit: async ctx => {
       audits.push(ctx.signal)
+      contexts.push(ctx)
       if (onAudit) await onAudit()
       return { status: 'pass', summary: 'ok' }
     },
   }
-  return { branch, audits }
+  return { branch, audits, contexts }
 }
 
 const WS = '/ws'
@@ -152,16 +175,21 @@ function signalJson(timestamp: string): string {
   return JSON.stringify(s)
 }
 
-function makeWorld(timestamp: string, opts: { suiteEye?: boolean; deep?: boolean; onAudit?: () => Promise<void> } = {}) {
+function makeWorld(
+  timestamp: string,
+  opts: { suiteEye?: boolean; deep?: boolean; onAudit?: () => Promise<void>; withTestFile?: boolean } = {},
+) {
+  const extraFiles: Record<string, string> = opts.withTestFile ? { [`${PROJ}/src/foo.test.ts`]: 'test()' } : {}
   const { fsx, writes } = makeFakeFs(
     {
       [SIGNAL_FILE]: signalJson(timestamp),
       [`${PROJ}/a.ts`]: 'export const a = 1',
+      ...extraFiles,
     },
     [PROJ],
   )
   const order: string[] = []
-  const { branch, audits } = makeBranch('archi', opts.onAudit)
+  const { branch, audits, contexts } = makeBranch('archi', opts.onAudit)
   const logs: string[] = []
   const orch = createOrchestrator({
     workspace: WS,
@@ -172,7 +200,7 @@ function makeWorld(timestamp: string, opts: { suiteEye?: boolean; deep?: boolean
     log: l => logs.push(l),
     runners: makeRunners(order, { deep: opts.deep }),
   })
-  return { orch, fsx, writes, order, audits, logs }
+  return { orch, fsx, writes, order, audits, contexts, logs }
 }
 
 // ── Dédup : même phase (même timestamp) traitée 2× → 1 seul run ──────────────
@@ -268,6 +296,80 @@ await (async () => {
     'readProjectFiles : gros fichier tronqué',
     got.find(f => f.path === 'big.ts')!.content.includes('…(tronqué)…'),
   )
+}
+
+// ── #10 : échantillonnage priorisé — un fichier "route/auth" découvert TARD
+// survit à la troncature MAX_FILES, contrairement à un fichier ordinaire ──────
+{
+  const files: Record<string, string> = {}
+  // 60 fichiers "ordinaires" (> MAX_FILES=40) placés EN PREMIER dans le delta.
+  const ordinary: string[] = []
+  for (let i = 0; i < 60; i++) {
+    const p = `component-${String(i).padStart(2, '0')}.tsx`
+    files[`${PROJ}/${p}`] = `export const C${i} = () => null`
+    ordinary.push(p)
+  }
+  // Un fichier sensible (auth), placé TOUT À LA FIN de la liste de delta —
+  // "premier arrivé, premier servi" l'aurait perdu (60 > MAX_FILES=40).
+  const sensitive = 'src/routes/auth-handler.ts'
+  files[`${PROJ}/${sensitive}`] = 'export function login() {}'
+  const { fsx } = makeFakeFs(files, [PROJ])
+  const changed = [...ordinary, sensitive]
+  const got = readProjectFiles(PROJ, changed, fsx)
+  check('#10 priorité : sélection bornée à MAX_FILES', got.length === MAX_FILES)
+  check(
+    '#10 priorité : fichier auth/route survit à la troncature malgré sa position tardive',
+    got.some(f => f.path === sensitive),
+  )
+}
+
+// ── #10 : signal "tests ailleurs dans le projet" propagé dans AuditContext ───
+await (async () => {
+  const withTest = makeWorld('t1', { withTestFile: true })
+  await withTest.orch.handleSignal(SIGNAL_FILE)
+  check(
+    '#10 tests-ailleurs : fichier *.test.* présent hors delta → testsElsewhereInProject=true',
+    withTest.contexts[0]?.testsElsewhereInProject === true,
+  )
+
+  const withoutTest = makeWorld('t1', { withTestFile: false })
+  await withoutTest.orch.handleSignal(SIGNAL_FILE)
+  check(
+    '#10 tests-ailleurs : aucun fichier de test dans le projet → testsElsewhereInProject=false',
+    withoutTest.contexts[0]?.testsElsewhereInProject === false,
+  )
+})()
+
+// ── #10 : projectHasTests — existence seule, contenu jamais lu ───────────────
+{
+  const listing: Record<string, { name: string; dir: boolean }[]> = {
+    '/proj': [
+      { name: 'a.ts', dir: false },
+      { name: 'node_modules', dir: true },
+      { name: 'src', dir: true },
+    ],
+    '/proj/src': [
+      { name: 'b.ts', dir: false },
+      { name: 'b.test.ts', dir: false },
+    ],
+  }
+  const fsx: FsLike = {
+    existsSync: () => true,
+    readFileSync: () => {
+      throw new Error('projectHasTests ne doit jamais lire le contenu')
+    },
+    writeFileSync: () => {},
+    mkdirSync: () => {},
+    readdirSync: p => (listing[norm(p)] ?? []).map(e => ({ name: e.name, isDirectory: () => e.dir })),
+    isFile: () => true,
+  }
+  check('#10 projectHasTests : trouve un *.test.ts en sous-dossier', projectHasTests('/proj', fsx) === true)
+
+  const listingNoTests: Record<string, { name: string; dir: boolean }[]> = {
+    '/proj2': [{ name: 'a.ts', dir: false }],
+  }
+  const fsxNoTests: FsLike = { ...fsx, readdirSync: p => (listingNoTests[norm(p)] ?? []).map(e => ({ name: e.name, isDirectory: () => e.dir })) }
+  check('#10 projectHasTests : aucun test nulle part → false', projectHasTests('/proj2', fsxNoTests) === false)
 }
 
 // ── walkSrc : parcourt, saute les dossiers cachés/skip, borne MAX_FILES ──────
