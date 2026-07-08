@@ -3,23 +3,63 @@
 // PRIMAIRE : askOllama (ollama-client.ts, qwen3.5:cloud) — souverain, $0 API,
 // n'entame pas le quota d'abonnement Claude Code partagé avec l'usage interactif.
 // REPLI : askClaude (ABONNEMENT Claude Code, $0 crédits API — subscriptionEnv()
-// neutralise ANTHROPIC_API_KEY pour ne jamais dériver vers les crédits payants),
-// déclenché UNIQUEMENT si askOllama lève (Ollama injoignable/HTTP en erreur/
-// timeout) — jamais sur une réponse simplement illisible (ça, c'est un problème
-// de FORMAT, pas de DISPONIBILITÉ ; parseFirstJson/auditWithLLM le traitent déjà
-// en fail-open plus bas, sans re-solliciter un second cerveau — axiome 16/17).
+// neutralise les secrets pour ne jamais dériver vers les crédits payants NI fuiter
+// un secret vers le SDK), déclenché UNIQUEMENT si askOllama lève (Ollama injoignable/
+// HTTP en erreur/timeout) — jamais sur une réponse simplement illisible (ça, c'est un
+// problème de FORMAT, pas de DISPONIBILITÉ ; parseFirstJson/auditWithLLM le traitent
+// déjà en fail-open plus bas, sans re-solliciter un second cerveau — axiome 16/17).
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
-import { renderFiles } from './fs-shared.js'
 import { askOllama } from './ollama-client.js'
 
 const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation). */
 const FILE_PAYLOAD_CAP = 24_000
 
+/** Secrets à neutraliser de l'environnement transmis au SDK (liste non-exhaustive). */
+const SECRET_ENV_KEYS = [
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_API_KEY',
+  'GITHUB_TOKEN',
+  'GH_TOKEN',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_API_KEY',
+  'VERCEL_TOKEN',
+  'VERCEL_ACCESS_TOKEN',
+  'KREA_API_KEY',
+  'BWS_ACCESS_TOKEN',
+  'MANGO_VAULT_KEY',
+  'ELEVE_API_KEY',
+  'TAVILY_API_KEY',
+  'OPENAI_API_KEY',
+  'AWS_SECRET_ACCESS_KEY',
+  'DATABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'POSTGRES_PASSWORD',
+  'NPM_TOKEN',
+]
+
 function subscriptionEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...process.env }
-  delete env.ANTHROPIC_API_KEY
+  for (const key of SECRET_ENV_KEYS) delete env[key]
+  // Suppression en plus de toute var dont le nom contient SECRET/TOKEN/PASSWORD/KEY/API_KEY.
+  for (const key of Object.keys(env)) {
+    const upper = key.toUpperCase()
+    if (
+      upper.includes('SECRET') ||
+      upper.includes('PASSWORD') ||
+      upper.includes('_TOKEN') ||
+      upper.endsWith('_KEY') ||
+      upper === 'APIKEY' ||
+      upper.endsWith('_API_KEY')
+    ) {
+      delete env[key]
+    }
+  }
+  // Préserve explicitement les vars non-secrets utiles au SDK.
+  env.OLLAMA_URL = process.env.OLLAMA_URL
+  env.PORT = process.env.PORT
+  env.HOST = process.env.HOST
   return env
 }
 
@@ -33,6 +73,36 @@ export async function askLLM(system: string, user: string): Promise<string> {
     console.warn(`[mango-qa] Ollama indisponible (${(err as Error)?.message ?? err}) — repli Claude.`)
     return askClaude(system, user)
   }
+}
+
+/** Supprime les secrets visibles dans le code source avant injection dans le prompt LLM.
+ * _patterns est appliqué séquentiellement ; l'ordre n'a pas d'importance car les
+ *  patterns sont disjoints (formats tokenisés vs assignments génériques). */
+const SECRET_PATTERNS: Array<{ re: RegExp; replacement: string }> = [
+  // Clés OpenAI / Anthropic "sk-..."
+  { re: /sk-[a-zA-Z0-9]{20,}/g, replacement: 'sk-«redacted»' },
+  // GitHub PAT "ghp_..."
+  { re: /ghp_[a-zA-Z0-9]{36}/g, replacement: 'ghp_«redacted»' },
+  // GitHub fine-grained "github_pat_..."
+  { re: /github_pat_[a-zA-Z0-9_]{22,}/g, replacement: 'github_pat_«redacted»' },
+  // Tokens Bearer dans les headers HTTP
+  { re: /Bearer\s+[A-Za-z0-9._-]+/gi, replacement: 'Bearer «redacted»' },
+  // Assignments génériques apiKey|token|secret|password|apikey = "..."
+  // Capture group $1 = nom de la clé (api_key, token, secret, password, apikey)
+  {
+    re: /\b(api[_-]?key|token|secret|password|apikey)\s*[=:]\s*["'][^"']*["']/gi,
+    replacement: '$1 = "«redacted»"',
+  },
+]
+
+export function redactSecrets(code: string): string {
+  let out = code
+  for (const { re, replacement } of SECRET_PATTERNS) {
+    // réinitialise lastIndex car les regex sont globales et réutilisées
+    re.lastIndex = 0
+    out = out.replace(re, replacement)
+  }
+  return out
 }
 
 /** (system, user) → texte, via l'abonnement Claude Code. Lève en cas d'échec. */
@@ -91,6 +161,23 @@ export function parseFirstJson<T>(raw: string): T | null {
   return null
 }
 
+/** Concatène les fichiers pertinents en un payload borné pour le prompt.
+ *  Les secrets visibles dans le code source sont rédatés AVANT injection. */
+function renderFiles(files: AuditContext['files']): string {
+  let out = ''
+  for (const f of files) {
+    const content = redactSecrets(f.content)
+    const header = `\n----- ${f.path} -----\n`
+    if (out.length + header.length + content.length > FILE_PAYLOAD_CAP) {
+      const room = Math.max(0, FILE_PAYLOAD_CAP - out.length - header.length)
+      if (room > 200) out += header + content.slice(0, room) + '\n…(tronqué)…\n'
+      break
+    }
+    out += header + content
+  }
+  return out
+}
+
 const JSON_CONTRACT = `
 Réponds UNIQUEMENT par un objet JSON valide, sans aucun texte autour :
 {
@@ -146,7 +233,7 @@ export async function auditWithLLM(
         ? "\n\nSignal projet (hors delta) : des fichiers de test (*.test.*/*.spec.*) EXISTENT ailleurs dans ce projet. Ne conclus PAS à une absence totale de tests sur la seule base de ce delta — juge seulement si LA LOGIQUE LIVRÉE ICI aurait dû être testée."
         : "\n\nSignal projet (hors delta) : aucun fichier de test (*.test.*/*.spec.*) n'existe nulle part dans ce projet."
       : ''
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files, FILE_PAYLOAD_CAP)}`
+  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files)}`
 
   try {
     const raw = await ask(system, user)
