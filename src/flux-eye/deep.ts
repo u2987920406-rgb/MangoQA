@@ -6,8 +6,8 @@
 //
 // COST-AWARE : ne tourne PAS a chaque build. `shouldRunDeep` gate le declenchement
 // (build qui galere, app complexe, fait dur Tier 0, escalade cerveau, ou a la demande).
-// Modele leger via FLUX_DEEP_MODEL (l'appel passe par l'abonnement Claude = $0 marginal ;
-// MangoQA n'a pas de modele local — voir plan, hors scope).
+// #165 : askLLM (llm.ts) route en PRIMAIRE vers Ollama (qwen3.5:cloud, souverain,
+// $0 API), repli automatique sur l'abonnement Claude si Ollama est injoignable.
 //
 // POSTURE : conseil, JAMAIS bloquant (`blocking: false`). Fail-open partout.
 import fs from 'node:fs'
@@ -15,7 +15,7 @@ import path from 'node:path'
 import type { ProjectFile, PhaseSignal } from '../types.js'
 import type { NavGraph } from './graph.js'
 import type { FluxObservation } from './eye.js'
-import { askClaude, parseFirstJson } from '../llm.js'
+import { askLLM, parseFirstJson } from '../llm.js'
 import { readJsonlTail } from '../jsonl.js'
 import { renderFiles } from '../fs-shared.js'
 
@@ -139,7 +139,7 @@ export async function auditFluxDeep(
   deps: DeepAuditDeps = {},
 ): Promise<FluxDeepObservation> {
   const model = deps.model ?? process.env.FLUX_DEEP_MODEL ?? process.env.QA_MODEL ?? 'sonnet'
-  const askLLM = deps.askLLM ?? askClaude
+  const ask = deps.askLLM ?? askLLM
 
   const user = `Projet : ${signal.projectName} — phase ${signal.phase}.
 
@@ -154,7 +154,7 @@ CODE PERTINENT :
 ${renderFiles(files, FILE_PAYLOAD_CAP, '…(tronque)…')}`
 
   try {
-    const raw = await askLLM(DEEP_SYSTEM, user)
+    const raw = await ask(DEEP_SYSTEM, user)
     const parsed = parseFirstJson<{ findings?: unknown[]; summary?: string }>(raw)
     if (!parsed) {
       return { blocking: false, ran: false, reason: 'reponse illisible', model, findings: [], summary: 'Audit profond ignore (reponse illisible).' }
