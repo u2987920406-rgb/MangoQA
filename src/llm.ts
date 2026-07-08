@@ -1,12 +1,17 @@
-// Cerveau d'audit de Mango QA.
+// Cerveau d'audit de Mango QA (#165 — souveraineté).
 //
-// Réplique le pattern askClaude de MangoOS (server/src/llm-engine.ts) : query()
-// via l'ABONNEMENT Claude Code ($0, pas de crédits API). La présence de
-// ANTHROPIC_API_KEY détournerait silencieusement vers les crédits payants —
-// subscriptionEnv() la neutralise.
+// PRIMAIRE : askOllama (ollama-client.ts, qwen3.5:cloud) — souverain, $0 API,
+// n'entame pas le quota d'abonnement Claude Code partagé avec l'usage interactif.
+// REPLI : askClaude (ABONNEMENT Claude Code, $0 crédits API — subscriptionEnv()
+// neutralise ANTHROPIC_API_KEY pour ne jamais dériver vers les crédits payants),
+// déclenché UNIQUEMENT si askOllama lève (Ollama injoignable/HTTP en erreur/
+// timeout) — jamais sur une réponse simplement illisible (ça, c'est un problème
+// de FORMAT, pas de DISPONIBILITÉ ; parseFirstJson/auditWithLLM le traitent déjà
+// en fail-open plus bas, sans re-solliciter un second cerveau — axiome 16/17).
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
 import { renderFiles } from './fs-shared.js'
+import { askOllama } from './ollama-client.js'
 
 const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation). */
@@ -16,6 +21,18 @@ function subscriptionEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...process.env }
   delete env.ANTHROPIC_API_KEY
   return env
+}
+
+/** (system, user) → texte, PRIMAIRE Ollama + REPLI Claude si Ollama est injoignable.
+ *  Ne lève QUE si les DEUX échouent (repli épuisé). Injectable (deps.ask) pour les
+ *  branches/tests — défaut = ce dispatcher. */
+export async function askLLM(system: string, user: string): Promise<string> {
+  try {
+    return await askOllama(system, user)
+  } catch (err) {
+    console.warn(`[mango-qa] Ollama indisponible (${(err as Error)?.message ?? err}) — repli Claude.`)
+    return askClaude(system, user)
+  }
 }
 
 /** (system, user) → texte, via l'abonnement Claude Code. Lève en cas d'échec. */
@@ -103,8 +120,14 @@ export interface BranchMeta {
 
 /** Exécute un audit LLM générique pour une branche. Ne throw jamais : toute
  *  erreur (réseau, parsing) devient un "skip" (fail-open — Mango QA ne doit pas
- *  bloquer la production à cause de sa PROPRE défaillance). */
-export async function auditWithLLM(meta: BranchMeta, ctx: AuditContext): Promise<BranchFinding> {
+ *  bloquer la production à cause de sa PROPRE défaillance).
+ *  `ask` (optionnel, défaut askLLM = Ollama primaire + repli Claude) — injectable
+ *  pour les tests, zéro réseau, comme auditFluxDeep. */
+export async function auditWithLLM(
+  meta: BranchMeta,
+  ctx: AuditContext,
+  ask: (system: string, user: string) => Promise<string> = askLLM,
+): Promise<BranchFinding> {
   if (ctx.files.length === 0) {
     return { status: 'skip', summary: 'Aucun fichier pertinent pour cette branche.' }
   }
@@ -126,7 +149,7 @@ export async function auditWithLLM(meta: BranchMeta, ctx: AuditContext): Promise
   const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files, FILE_PAYLOAD_CAP)}`
 
   try {
-    const raw = await askClaude(system, user)
+    const raw = await ask(system, user)
     const parsed = parseFirstJson<{
       status?: string
       summary?: string
