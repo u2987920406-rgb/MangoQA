@@ -1,8 +1,8 @@
 // Tests du cerveau d'audit (#165 — souveraineté). Exécution : npx tsx test-llm.ts
 // Déterministe, ZÉRO vrai réseau (ask injecté dans auditWithLLM ; askOllama/askClaude
 // non appelés directement ici — seul le dispatcher askLLM est exercé via mocks).
-import { auditWithLLM, parseFirstJson, type BranchMeta } from './src/llm.js'
-import type { AuditContext } from './src/types.js'
+import { auditWithLLM, parseFirstJson, type BranchMeta } from '../../src/llm.js'
+import type { AuditContext } from '../../src/types.js'
 
 let passed = 0
 let failed = 0

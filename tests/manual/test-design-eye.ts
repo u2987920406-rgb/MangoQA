@@ -6,15 +6,15 @@ import {
   contrastRatio,
   isLargeText,
   wcagLevel,
-} from './src/design-eye/contrast.js'
-import { normalizeHex, offPalette, offScale, offStep } from './src/design-eye/tokens.js'
+} from '../../src/design-eye/contrast.js'
+import { normalizeHex, offPalette, offScale, offStep } from '../../src/design-eye/tokens.js'
 import {
   inspectDesign,
   extractCssColors,
   extractContrastPairs,
   type DesignObservation,
-} from './src/design-eye/eye.js'
-import { extractDeclaredPalette, inspectProjectDesign, runDesignEye, readLatestBrief } from './src/design-eye/runner.js'
+} from '../../src/design-eye/eye.js'
+import { extractDeclaredPalette, inspectProjectDesign, runDesignEye, readLatestBrief } from '../../src/design-eye/runner.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
