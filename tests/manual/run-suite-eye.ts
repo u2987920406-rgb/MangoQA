@@ -5,7 +5,7 @@
 // <workspace>/.mangoqa/suite-observations.json.
 import path from 'node:path'
 import fs from 'node:fs'
-import { analyzeSuite } from './src/suite-eye/runner.js'
+import { analyzeSuite } from '../../src/suite-eye/runner.js'
 
 const arg = process.argv.slice(2).find((a) => !a.startsWith('--'))
 if (!arg) {

@@ -1,7 +1,7 @@
 // Tests de l'Auditeur de Suite (cross-app, #138). Exécution : npx tsx test-suite-eye.ts
 // Déterministe, zéro réseau, zéro LLM. Logique pure (auditSuite) + runner I/O injectée.
-import { auditSuite, slugCollection, type SuiteApp } from './src/suite-eye/audit.js'
-import { analyzeSuite, loadSuiteApp, type SuiteEyeDeps } from './src/suite-eye/runner.js'
+import { auditSuite, slugCollection, type SuiteApp } from '../../src/suite-eye/audit.js'
+import { analyzeSuite, loadSuiteApp, type SuiteEyeDeps } from '../../src/suite-eye/runner.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
