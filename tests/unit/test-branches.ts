@@ -29,13 +29,13 @@ vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fetch mocked (test)
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
-import { accessibility } from './branches/accessibility.js'
-import { architecture } from './branches/architecture.js'
-import { designSystem } from './branches/design-system.js'
-import { performance } from './branches/performance.js'
-import { security } from './branches/security.js'
-import { tests } from './branches/tests.js'
-import type { AuditContext, ProjectFile } from './types.js'
+import { accessibility } from '../../src/branches/accessibility.js'
+import { architecture } from '../../src/branches/architecture.js'
+import { designSystem } from '../../src/branches/design-system.js'
+import { performance } from '../../src/branches/performance.js'
+import { security } from '../../src/branches/security.js'
+import { tests } from '../../src/branches/tests.js'
+import type { AuditContext, ProjectFile } from '../../src/types.js'
 
 const mockQuery = vi.mocked(query)
 

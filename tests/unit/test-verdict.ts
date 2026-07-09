@@ -2,8 +2,8 @@
 // Décide green/red à partir des résultats de branches. Première branche
 // bloquante en échec → rejet déterministe. Branches non-bloquantes = conseil.
 import { describe, it, expect } from 'vitest'
-import { buildVerdict, type BranchResult } from './verdict.js'
-import type { Branch, BranchFinding } from './types.js'
+import { buildVerdict, type BranchResult } from '../../src/verdict.js'
+import type { Branch, BranchFinding } from '../../src/types.js'
 
 /** Branche bloquante factice. */
 function blocking(id: string, finding: BranchFinding): BranchResult {

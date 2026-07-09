@@ -11,6 +11,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
 import { askOllama } from './ollama-client.js'
+import { renderFiles } from './fs-shared.js'
 
 const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation). */
@@ -161,23 +162,6 @@ export function parseFirstJson<T>(raw: string): T | null {
   return null
 }
 
-/** Concatène les fichiers pertinents en un payload borné pour le prompt.
- *  Les secrets visibles dans le code source sont rédatés AVANT injection. */
-function renderFiles(files: AuditContext['files']): string {
-  let out = ''
-  for (const f of files) {
-    const content = redactSecrets(f.content)
-    const header = `\n----- ${f.path} -----\n`
-    if (out.length + header.length + content.length > FILE_PAYLOAD_CAP) {
-      const room = Math.max(0, FILE_PAYLOAD_CAP - out.length - header.length)
-      if (room > 200) out += header + content.slice(0, room) + '\n…(tronqué)…\n'
-      break
-    }
-    out += header + content
-  }
-  return out
-}
-
 const JSON_CONTRACT = `
 Réponds UNIQUEMENT par un objet JSON valide, sans aucun texte autour :
 {
@@ -233,7 +217,7 @@ export async function auditWithLLM(
         ? "\n\nSignal projet (hors delta) : des fichiers de test (*.test.*/*.spec.*) EXISTENT ailleurs dans ce projet. Ne conclus PAS à une absence totale de tests sur la seule base de ce delta — juge seulement si LA LOGIQUE LIVRÉE ICI aurait dû être testée."
         : "\n\nSignal projet (hors delta) : aucun fichier de test (*.test.*/*.spec.*) n'existe nulle part dans ce projet."
       : ''
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files)}`
+  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files.map(f => ({ ...f, content: redactSecrets(f.content) })), FILE_PAYLOAD_CAP)}`
 
   try {
     const raw = await ask(system, user)
