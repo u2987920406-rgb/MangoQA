@@ -2,7 +2,9 @@
 //
 // Élimine deux duplications trouvées par l'audit :
 // - `renderFiles` existait à l'identique (à un cap et un libellé de troncature
-//   près) dans llm.ts ET flux-eye/deep.ts.
+//   près) dans llm.ts ET flux-eye/deep.ts. Les deux visages appellent
+//   désormais cette version partagée (llm.ts rédacte les secrets AVANT
+//   de la passer en entrée, pour préserver son comportement d'origine).
 // - `walk`/`walkSrc` existait à l'identique (à l'extension/aux dossiers ignorés/
 //   au mode « chemins seuls vs contenu lu » près) dans orchestrator.ts ET
 //   flux-eye/runner.ts.

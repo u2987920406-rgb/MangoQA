@@ -5,8 +5,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { recordRejection, loadRetexConstraints } from './retex.js'
-import type { PhaseSignal, Rejection } from './types.js'
+import { recordRejection, loadRetexConstraints } from '../../src/retex.js'
+import type { PhaseSignal, Rejection } from '../../src/types.js'
 
 const RETEX_FILE = '.mangoqa-retex.jsonl'
 
