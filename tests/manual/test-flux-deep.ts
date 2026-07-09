@@ -1,10 +1,10 @@
 // Tests de l'Auditeur de Flux Tier 1 (audit LLM conseil, cost-aware).
 // Execution : npx tsx test-flux-deep.ts. Deterministe, ZERO vrai LLM (askLLM injecte).
-import { buildGraph } from './src/flux-eye/graph.js'
-import { inspectFlux } from './src/flux-eye/eye.js'
-import { shouldRunDeep, auditFluxDeep, runFluxDeep } from './src/flux-eye/deep.js'
-import { initFluxParser } from './src/flux-eye/parser.js'
-import type { ProjectFile } from './src/types.js'
+import { buildGraph } from '../../src/flux-eye/graph.js'
+import { inspectFlux } from '../../src/flux-eye/eye.js'
+import { shouldRunDeep, auditFluxDeep, runFluxDeep } from '../../src/flux-eye/deep.js'
+import { initFluxParser } from '../../src/flux-eye/parser.js'
+import type { ProjectFile } from '../../src/types.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

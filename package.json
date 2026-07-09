@@ -8,7 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test:manual": "tsx test-disjoncteur.ts && tsx test-design-eye.ts && tsx test-flux-eye.ts && tsx test-flux-deep.ts && tsx test-llm.ts && tsx test-suite-eye.ts && tsx src/test-jsonl.ts && tsx src/test-orchestrator.ts && tsx src/test-fs-shared.ts && tsx src/test-observer.ts && tsx src/test-observer-runner.ts",
+    "test:manual": "tsx tests/manual/test-disjoncteur.ts && tsx tests/manual/test-design-eye.ts && tsx tests/manual/test-flux-eye.ts && tsx tests/manual/test-flux-deep.ts && tsx tests/manual/test-llm.ts && tsx tests/manual/test-suite-eye.ts && tsx src/test-jsonl.ts && tsx src/test-orchestrator.ts && tsx src/test-fs-shared.ts && tsx src/test-observer.ts && tsx src/test-observer-runner.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
