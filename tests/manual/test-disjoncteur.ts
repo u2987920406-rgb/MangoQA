@@ -7,8 +7,8 @@ import {
   type BreakerConfig,
   type BreakerId,
   type BusEvent,
-} from './src/breakers/disjoncteur.js'
-import { runDisjoncteurOnce, readBusEvents, createBusEventsReader } from './src/breakers/runner.js'
+} from '../../src/breakers/disjoncteur.js'
+import { runDisjoncteurOnce, readBusEvents, createBusEventsReader } from '../../src/breakers/runner.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

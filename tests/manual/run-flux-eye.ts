@@ -5,9 +5,9 @@
 // (+ flux-deep-observations.json avec --deep).
 import path from 'node:path'
 import fs from 'node:fs'
-import { analyzeFlux } from './src/flux-eye/runner.js'
-import { runFluxDeep } from './src/flux-eye/deep.js'
-import { initFluxParser } from './src/flux-eye/parser.js'
+import { analyzeFlux } from '../../src/flux-eye/runner.js'
+import { runFluxDeep } from '../../src/flux-eye/deep.js'
+import { initFluxParser } from '../../src/flux-eye/parser.js'
 
 const args = process.argv.slice(2)
 const deep = args.includes('--deep')

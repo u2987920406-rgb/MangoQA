@@ -1,10 +1,10 @@
 // Tests de l'Auditeur de Flux (Tier 0 déterministe). Exécution : npx tsx test-flux-eye.ts
 // Déterministe, zéro réseau, zéro LLM. Logique pure ; runner avec deps injectées.
-import { findStateMachines, buildGraph } from './src/flux-eye/graph.js'
-import { inspectFlux } from './src/flux-eye/eye.js'
-import { inspectProjectFlux, runFluxEye } from './src/flux-eye/runner.js'
-import { initFluxParser } from './src/flux-eye/parser.js'
-import type { ProjectFile } from './src/types.js'
+import { findStateMachines, buildGraph } from '../../src/flux-eye/graph.js'
+import { inspectFlux } from '../../src/flux-eye/eye.js'
+import { inspectProjectFlux, runFluxEye } from '../../src/flux-eye/runner.js'
+import { initFluxParser } from '../../src/flux-eye/parser.js'
+import type { ProjectFile } from '../../src/types.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

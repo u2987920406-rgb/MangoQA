@@ -11,6 +11,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test-*.ts", "run-*.ts", "vitest.config.ts"],
-  "exclude": ["test-flux-eye.ts", "test-suite-eye.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
+  "exclude": ["tests/manual/test-flux-eye.ts", "tests/manual/test-suite-eye.ts"]
 }
