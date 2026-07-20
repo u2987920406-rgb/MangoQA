@@ -24,6 +24,8 @@ import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
 import { startDisjoncteur } from './breakers/runner.js'
 import { runObserver, observerEnabled } from './observer-runner.js'
+import { realFs } from './orchestrator.js'
+import { scanForSignals, filterChangedSignals, initFallbackScanState } from './watch-fallback.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -78,6 +80,29 @@ async function handleAndObserve(f: string): Promise<void> {
 }
 watcher.on('add', f => void handleAndObserve(f))
 watcher.on('change', f => void handleAndObserve(f))
+
+// Filet de secours (#Q-fallback) : les écritures via PowerShell/Bash MINGW ne déclenchent
+// pas toujours l'événement chokidar sous Windows. Ce scan périodique relit le disque
+// directement — sûr par construction, `orchestrator.handleSignal` dédupe déjà par
+// `signal.timestamp` par projet, donc retraiter un signal déjà géré par chokidar est un
+// no-op. Intervalle volontairement plus lâche que chokidar (pas le chemin réactif primaire).
+// `filterChangedSignals` protège contre le rejeu de TOUS les signaux périmés au boot
+// (comportement `ignoreInitial`, cf. watch-fallback.ts pour le detail du bug corrigé).
+const fallbackState = initFallbackScanState()
+const FALLBACK_POLL_MS = parseInt(process.env.QA_FALLBACK_POLL_MS ?? '15000', 10)
+if (FALLBACK_POLL_MS > 0) {
+  setInterval(() => {
+    const candidates = scanForSignals(WORKSPACE, realFs)
+    const getMtimeMs = (p: string): number | null => {
+      try {
+        return fs.statSync(p).mtimeMs
+      } catch {
+        return null
+      }
+    }
+    for (const f of filterChangedSignals(candidates, getMtimeMs, fallbackState)) void handleAndObserve(f)
+  }, FALLBACK_POLL_MS)
+}
 
 // ── Visage 1 : le Disjoncteur (réflexes durs, zéro LLM) ──────────────────────
 // Surveille en continu le flux du Bus (.mangoqa/bus-events.jsonl, exporté par le

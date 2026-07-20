@@ -98,4 +98,51 @@ describe('observer', () => {
     const r = analyzeEvents([ev('architecture', 'r1'), ev('architecture', 'r1')])
     expect(JSON.stringify(r).length > 0).toBe(true)
   })
+
+  describe('fenêtre glissante (windowDays + now)', () => {
+    const oldEvent = (branch: string, ruleRef: string): ObserverEvent => ({
+      ts: '2026-01-01T00:00:00.000Z', // très ancien
+      projectName: 'proj-x',
+      phase: 'build',
+      branch,
+      ruleRef,
+      rejectionId: `${branch}-old`,
+    })
+    const NOW = '2026-07-19T00:00:00.000Z'
+
+    it('sans now fourni : windowDays seul est sans effet (agrégation globale préservée)', () => {
+      const events = [oldEvent('architecture', 'r1'), oldEvent('architecture', 'r1')]
+      const r = analyzeEvents(events, { windowDays: 7, minCount: 2, minShare: 0 })
+      expect(r.totalEvents).toBe(2)
+    })
+
+    it('événements hors fenêtre exclus de l\'analyse', () => {
+      const events = [oldEvent('architecture', 'r1'), oldEvent('architecture', 'r1'), ev('security', 'r2')]
+      const r = analyzeEvents(events, { windowDays: 7, now: NOW, minCount: 1, minShare: 0 })
+      // seul ev('security', 'r2') est daté 2026-07-03, hors fenêtre 7j de NOW (2026-07-19) aussi —
+      // donc 0 événement dans la fenêtre, les 2 "old" (2026-01-01) sont hors fenêtre également.
+      expect(r.totalEvents).toBe(0)
+      expect(r.summary.includes('fenêtre')).toBe(true)
+    })
+
+    it('événements dans la fenêtre conservés, hors fenêtre écartés', () => {
+      const recent: ObserverEvent = { ts: '2026-07-18T00:00:00.000Z', projectName: 'p', phase: 'build', branch: 'architecture', ruleRef: 'r1', rejectionId: 'r1-recent' }
+      const events = [oldEvent('architecture', 'r1'), recent]
+      const r = analyzeEvents(events, { windowDays: 30, now: NOW, minCount: 1, minShare: 0 })
+      expect(r.totalEvents).toBe(1)
+    })
+
+    it('ts illisible exclu silencieusement, jamais d\'exception', () => {
+      const bad: ObserverEvent = { ts: 'pas-une-date', projectName: 'p', phase: 'build', branch: 'architecture', ruleRef: 'r1', rejectionId: 'r1-bad' }
+      expect(() => analyzeEvents([bad], { windowDays: 30, now: NOW })).not.toThrow()
+      const r = analyzeEvents([bad], { windowDays: 30, now: NOW })
+      expect(r.totalEvents).toBe(0)
+    })
+
+    it('now illisible : fenêtre désactivée, agrégation globale (fail-open)', () => {
+      const events = [oldEvent('architecture', 'r1'), oldEvent('architecture', 'r1')]
+      const r = analyzeEvents(events, { windowDays: 7, now: 'pas-une-date', minCount: 2, minShare: 0 })
+      expect(r.totalEvents).toBe(2)
+    })
+  })
 })

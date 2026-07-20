@@ -24,6 +24,16 @@ export const OBSERVER_TAIL_BYTES = 1024 * 1024 // 1 Mo, cohérent avec le Retex 
 
 export const OBSERVER_REPORT_FILE = 'observer-report.json'
 
+/** Fenêtre glissante par défaut de l'analyse (jours) — au-delà de 30j, un pattern ancien
+ *  et déjà corrigé continuerait à polluer les suggestions. Override via QA_OBSERVER_WINDOW_DAYS. */
+export const OBSERVER_WINDOW_DAYS_DEFAULT = 30
+
+function resolveWindowDays(env: NodeJS.ProcessEnv): number {
+  const raw = env.QA_OBSERVER_WINDOW_DAYS
+  const n = raw ? Number(raw) : NaN
+  return Number.isFinite(n) && n > 0 ? n : OBSERVER_WINDOW_DAYS_DEFAULT
+}
+
 /** RetexEntry → ObserverEvent. Une entrée malformée (champ manquant/mal typé — JSONL
  *  toléré par nature) est ignorée SILENCIEUSEMENT : le mapping est best-effort, pas un
  *  contrat strict — l'Observateur est un conseil, pas un garde. */
@@ -94,7 +104,7 @@ export function observerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 /** Un passage de l'Observateur : lit le Retex (borné), mappe, analyse, écrit le constat.
  *  NE LÈVE JAMAIS vers l'appelant — l'Observateur est un conseil, pas un garde. Tout
  *  échec est avalé mais TRACÉ (console.warn, fail-open ≠ fail-silent). */
-export function runObserver(workspace: string, deps: ObserverRunnerDeps = {}): void {
+export function runObserver(workspace: string, deps: ObserverRunnerDeps = {}, env: NodeJS.ProcessEnv = process.env): void {
   const readEntries = deps.readEntries ?? defaultReadEntries
   const writeReport = deps.writeReport ?? atomicWrite
   const now = deps.now ?? (() => new Date())
@@ -102,10 +112,12 @@ export function runObserver(workspace: string, deps: ObserverRunnerDeps = {}): v
   try {
     const entries = readEntries(workspace)
     const events = mapRetexToObserverEvents(entries)
-    const report = analyzeEvents(events)
+    const nowIso = now().toISOString()
+    const windowDays = resolveWindowDays(env)
+    const report = analyzeEvents(events, { windowDays, now: nowIso })
     const rendered = renderObserverReport(report)
     const payload: ObserverReportFile = {
-      generatedAt: now().toISOString(),
+      generatedAt: nowIso,
       windowEvents: events.length,
       report,
       rendered,

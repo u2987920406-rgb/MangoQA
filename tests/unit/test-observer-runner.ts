@@ -160,6 +160,34 @@ describe('observer-runner', () => {
     expect(payload.generatedAt).toBe('2026-01-01T00:00:00.000Z')
   })
 
+  it('fenêtre glissante par défaut (30j) : événement ancien exclu de l\'analyse', () => {
+    const workspace = ws('window-default')
+    fs.mkdirSync(workspace, { recursive: true })
+    const old = retexEntry({ ts: '2026-05-01T00:00:00.000Z', rejection_id: 'r-old' }) // >30j avant fixedNow
+    fs.writeFileSync(path.join(workspace, '.mangoqa-retex.jsonl'), JSON.stringify(old) + '\n', 'utf8')
+    const fixedNow = new Date('2026-07-19T00:00:00.000Z')
+
+    runObserver(workspace, { now: () => fixedNow })
+
+    const raw = JSON.parse(fs.readFileSync(reportPath(workspace), 'utf8')) as ObserverReportFile
+    expect(raw.windowEvents).toBe(1) // lu depuis le Retex, avant filtrage fenêtre
+    expect(raw.report.totalEvents).toBe(0) // exclu par la fenêtre glissante de 30j
+    expect(raw.report.summary.includes('fenêtre')).toBe(true)
+  })
+
+  it('QA_OBSERVER_WINDOW_DAYS élargit la fenêtre : l\'événement ancien redevient visible', () => {
+    const workspace = ws('window-override')
+    fs.mkdirSync(workspace, { recursive: true })
+    const old = retexEntry({ ts: '2026-05-01T00:00:00.000Z', rejection_id: 'r-old' })
+    fs.writeFileSync(path.join(workspace, '.mangoqa-retex.jsonl'), JSON.stringify(old) + '\n', 'utf8')
+    const fixedNow = new Date('2026-07-19T00:00:00.000Z')
+
+    runObserver(workspace, { now: () => fixedNow }, { QA_OBSERVER_WINDOW_DAYS: '365' })
+
+    const raw = JSON.parse(fs.readFileSync(reportPath(workspace), 'utf8')) as ObserverReportFile
+    expect(raw.report.totalEvents).toBe(1)
+  })
+
   it('writeReport qui lève : n\'écroule jamais runObserver (fail-open)', () => {
     const workspace = ws('write-fails')
     fs.mkdirSync(workspace, { recursive: true })
