@@ -14,8 +14,9 @@
  *  verdicts). Ne contient QUE ce qui sert à détecter des patterns — pas le contrat figé
  *  QAVerdict (types.ts) que MangoOS lit, pour ne pas coupler l'Observateur à ce contrat. */
 export interface ObserverEvent {
-  /** ISO 8601. Non exploité pour l'instant (agrégation globale) — réservé pour une future
-   *  fenêtre glissante (ex. « ces 7 derniers jours »). */
+  /** ISO 8601. Utilisé pour la fenêtre glissante (ObserverOptions.windowDays) — un `ts`
+   *  invalide/absent-de-fenêtre exclut simplement l'événement de l'analyse (best-effort,
+   *  jamais une exception, cohérent avec le mapping tolérant de mapRetexToObserverEvents). */
   ts: string
   projectName: string
   phase: string
@@ -56,13 +57,34 @@ export interface ObserverOptions {
   topN?: number
   /** Exemples affichés par pattern retenu. */
   examplesPerPattern?: number
+  /** Taille de la fenêtre glissante en jours. Sans effet si `now` n'est pas fourni (module
+   *  pur — pas d'horloge implicite) : dans ce cas l'agrégation reste globale, comme avant. */
+  windowDays?: number
+  /** Instant de référence ISO 8601 pour la fenêtre glissante — fourni par l'appelant
+   *  (ex. observer-runner.ts) pour que le module reste déterministe et testable. */
+  now?: string
 }
 
-const DEFAULT_OPTIONS: Required<ObserverOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<ObserverOptions, 'now'>> & { now?: string } = {
   minCount: 2,
   minShare: 0.2,
   topN: 3,
   examplesPerPattern: 3,
+  windowDays: 0,
+  now: undefined,
+}
+
+/** Ne garde que les événements dans [now - windowDays, now]. Un `ts` illisible exclut
+ *  l'événement (best-effort). Pas de fenêtre (windowDays<=0 ou now absent) → identité. */
+function applyWindow(events: ObserverEvent[], windowDays: number, now: string | undefined): ObserverEvent[] {
+  if (!windowDays || windowDays <= 0 || !now) return events
+  const nowMs = new Date(now).getTime()
+  if (Number.isNaN(nowMs)) return events
+  const sinceMs = nowMs - windowDays * 24 * 60 * 60 * 1000
+  return events.filter((e) => {
+    const t = new Date(e.ts).getTime()
+    return !Number.isNaN(t) && t >= sinceMs && t <= nowMs
+  })
 }
 
 interface Bucket {
@@ -96,7 +118,7 @@ function toPatterns(
   buckets: Bucket[],
   kind: ObserverPatternKind,
   total: number,
-  opts: Required<ObserverOptions>,
+  opts: Pick<Required<ObserverOptions>, 'minCount' | 'minShare' | 'topN'>,
 ): ObserverPattern[] {
   return buckets
     .map((b) => ({ kind, subject: b.subject, count: b.count, share: total > 0 ? b.count / total : 0, examples: b.examples }))
@@ -124,24 +146,29 @@ function suggestionFor(p: ObserverPattern): string {
 /** Analyse un historique d'événements (déterministe, zéro I/O) et détecte les patterns de
  *  défaillance récurrents. Ne bloque jamais, ne modifie rien : renvoie un RAPPORT à lire. */
 export function analyzeEvents(events: ObserverEvent[], options: ObserverOptions = {}): ObserverReport {
-  const opts: Required<ObserverOptions> = { ...DEFAULT_OPTIONS, ...options }
-  const total = events.length
+  const opts = { ...DEFAULT_OPTIONS, ...options }
+  const windowed = applyWindow(events, opts.windowDays, opts.now)
+  const total = windowed.length
 
   if (total === 0) {
-    return { totalEvents: 0, patterns: [], suggestions: [], summary: 'Aucun événement à analyser — historique vide.' }
+    const reason = events.length > 0 && windowed.length === 0
+      ? `Aucun événement dans la fenêtre des ${opts.windowDays} derniers jours (${events.length} au total hors fenêtre).`
+      : 'Aucun événement à analyser — historique vide.'
+    return { totalEvents: 0, patterns: [], suggestions: [], summary: reason }
   }
 
-  const byBranch = toPatterns(bucketBy(events, (e) => e.branch, opts.examplesPerPattern), 'branche-recurrente', total, opts)
-  const byRule = toPatterns(bucketBy(events, (e) => e.ruleRef, opts.examplesPerPattern), 'regle-recurrente', total, opts)
-  const byProject = toPatterns(bucketBy(events, (e) => e.projectName, opts.examplesPerPattern), 'projet-recurrent', total, opts)
+  const byBranch = toPatterns(bucketBy(windowed, (e) => e.branch, opts.examplesPerPattern), 'branche-recurrente', total, opts)
+  const byRule = toPatterns(bucketBy(windowed, (e) => e.ruleRef, opts.examplesPerPattern), 'regle-recurrente', total, opts)
+  const byProject = toPatterns(bucketBy(windowed, (e) => e.projectName, opts.examplesPerPattern), 'projet-recurrent', total, opts)
 
   const patterns = [...byBranch, ...byRule, ...byProject]
   const suggestions = patterns.map(suggestionFor)
 
+  const windowNote = opts.windowDays > 0 && opts.now ? ` (fenêtre ${opts.windowDays}j)` : ''
   const summary =
     patterns.length === 0
-      ? `${total} événement(s) analysé(s) — aucun pattern récurrent au-dessus du seuil (bruit normal).`
-      : `${total} événement(s) analysé(s) — ${patterns.length} pattern(s) récurrent(s) détecté(s).`
+      ? `${total} événement(s) analysé(s)${windowNote} — aucun pattern récurrent au-dessus du seuil (bruit normal).`
+      : `${total} événement(s) analysé(s)${windowNote} — ${patterns.length} pattern(s) récurrent(s) détecté(s).`
 
   return { totalEvents: total, patterns, suggestions, summary }
 }
