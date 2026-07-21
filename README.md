@@ -66,13 +66,21 @@ npm install
 ## Lancer
 
 ```bash
-npm run dev      # watch (redémarre à chaque modif)
-npm run start    # one-shot
+npm run dev              # watch (redémarre à chaque modif de code)
+npm run start            # one-shot, sans supervision
+npm run watch:supervised # RECOMMANDÉ pour une session longue durée (relance auto)
 npm run typecheck
 ```
 
 MangoOS détecte Mango QA tout seul dès qu'il tourne. Si le terminal n'est pas
 lancé, MangoOS continue normalement (fail-open).
+
+**`npm run watch:supervised`** (limites.md L127) : superviseur léger (`src/watchdog.ts`)
+qui relance `src/index.ts` automatiquement s'il crashe OU si sa sentinelle
+`.mangoqa-active` cesse d'être rafraîchie (process vivant mais bloqué). MangoQA a
+connu 2 crashs réels par fuite mémoire progressive sur des sessions multi-heures
+(SOUV-D, 2026-07-15) — ce mode absorbe le symptôme (continuité de service) sans
+corriger la fuite elle-même (cause racine encore ouverte). Log dans `watchdog.log`.
 
 ## ⚠️ Bug chokidar connu
 
