@@ -64,16 +64,51 @@ function subscriptionEnv(): Record<string, string | undefined> {
   return env
 }
 
-/** (system, user) → texte, PRIMAIRE Ollama + REPLI Claude si Ollama est injoignable.
- *  Ne lève QUE si les DEUX échouent (repli épuisé). Injectable (deps.ask) pour les
- *  branches/tests — défaut = ce dispatcher. */
-export async function askLLM(system: string, user: string): Promise<string> {
-  try {
-    return await askOllama(system, user)
-  } catch (err) {
-    console.warn(`[mango-qa] Ollama indisponible (${(err as Error)?.message ?? err}) — repli Claude.`)
-    return askClaude(system, user)
+// limites.md L128 : le repli Claude tourne sur l'ABONNEMENT Claude Code — le MÊME
+// compteur de session que l'usage interactif de Raf. Basculer dès le 1er échec Ollama
+// confond un TIMEOUT/instabilité réseau transitoire (l'immense majorité des cas
+// observés en réel) avec une VRAIE indisponibilité, et grille du quota partagé pour
+// rien. Récidive constatée le 2026-07-16 (SOUV-D) : 5 échecs Ollama consécutifs →
+// repli Claude → Claude a LUI-MÊME buté sur sa limite de session peu après. Ce
+// nombre de tentatives + ce backoff sont un compromis pragmatique, pas une science —
+// à resserrer si des replis restent encore trop fréquents en usage réel.
+const OLLAMA_RETRY_ATTEMPTS = 2 // tentatives SUPPLÉMENTAIRES → 3 essais Ollama au total
+const OLLAMA_RETRY_DELAY_MS = 1_500
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** (system, user) → texte, PRIMAIRE Ollama (retry + backoff avant d'abandonner) + REPLI
+ *  Claude seulement après épuisement des tentatives. Ne lève QUE si Claude échoue aussi.
+ *  Dépendances injectables (tests) — défaut = le vrai dispatcher Ollama/Claude/setTimeout. */
+export async function askLLM(
+  system: string,
+  user: string,
+  deps: {
+    ask?: (system: string, user: string) => Promise<string>
+    askFallback?: (system: string, user: string) => Promise<string>
+    sleep?: (ms: number) => Promise<void>
+    retryAttempts?: number
+    retryDelayMs?: number
+  } = {},
+): Promise<string> {
+  const ask = deps.ask ?? askOllama
+  const askFallback = deps.askFallback ?? askClaude
+  const sleep = deps.sleep ?? defaultSleep
+  const retryAttempts = deps.retryAttempts ?? OLLAMA_RETRY_ATTEMPTS
+  const retryDelayMs = deps.retryDelayMs ?? OLLAMA_RETRY_DELAY_MS
+  const maxTries = 1 + retryAttempts
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    try {
+      return await ask(system, user)
+    } catch (err) {
+      const willRetry = attempt < maxTries
+      console.warn(
+        `[mango-qa] Ollama tentative ${attempt}/${maxTries} échouée (${(err as Error)?.message ?? err})` +
+          (willRetry ? ` — nouvel essai dans ${retryDelayMs}ms.` : ' — repli Claude.'),
+      )
+      if (willRetry) await sleep(retryDelayMs)
+    }
   }
+  return askFallback(system, user)
 }
 
 /** Supprime les secrets visibles dans le code source avant injection dans le prompt LLM.
