@@ -16,6 +16,25 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { ProjectFile } from './types.js'
 
+// ── atomicWriteFileSync : écriture jamais lue à moitié écrite ─────────────────
+
+/** Écrit `data` dans `file` de façon ATOMIQUE (tmp + rename) : un lecteur ne voit
+ *  jamais un fichier tronqué, même si le process meurt en plein écriture. Le nom
+ *  temporaire inclut pid+timestamp pour ne pas entrer en collision entre process
+ *  concurrents (MangoQA peut avoir des instances qui se chevauchent).
+ *
+ *  (Audit d'allègement 2026-07-24) Extrait de observer-runner.ts, où ce patron
+ *  vivait en local avec le commentaire « le repo n'a pas de helper partagé pour ça ».
+ *  Les 3 autres visages (design-eye/flux-eye/suite-eye) écrivaient, eux, en
+ *  `fs.writeFileSync` DIRECT (non-atomique) — un vrai risque de fichier
+ *  d'observations tronqué au crash, exactement la classe de bug traquée côté
+ *  MangoOS. Ce helper unique ferme le gap ET la duplication d'un coup. */
+export function atomicWriteFileSync(file: string, data: string): void {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`
+  fs.writeFileSync(tmp, data, 'utf8')
+  fs.renameSync(tmp, file)
+}
+
 // ── renderFiles : payload de prompt borné ────────────────────────────────────
 
 /** Concatène des fichiers en un payload de prompt borné à `cap` caractères. Au

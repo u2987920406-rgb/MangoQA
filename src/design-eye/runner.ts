@@ -17,6 +17,7 @@ import {
 } from './eye.js'
 import { normalizeHex } from './tokens.js'
 import { readJsonlTail } from '../jsonl.js'
+import { atomicWriteFileSync } from '../fs-shared.js'
 import type { ProjectFile } from '../types.js'
 
 export const OBSERVATIONS_FILE = 'design-observations.json'
@@ -103,7 +104,7 @@ export function runDesignEye(
   deps: DesignEyeDeps = {},
   brief?: DesignContext['brief'],
 ): DesignObservation {
-  const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
+  const writeFile = deps.writeFile ?? atomicWriteFileSync
   const now = deps.now ?? (() => Date.now())
 
   const obs = inspectProjectDesign(files, brief)

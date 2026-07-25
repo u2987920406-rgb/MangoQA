@@ -12,7 +12,7 @@ import path from 'node:path'
 import type { ProjectFile } from '../types.js'
 import { buildGraph, type NavGraph } from './graph.js'
 import { inspectFlux, type FluxObservation } from './eye.js'
-import { walkTree, realWalkFs } from '../fs-shared.js'
+import { walkTree, realWalkFs, atomicWriteFileSync } from '../fs-shared.js'
 
 export const OBSERVATIONS_FILE = 'flux-observations.json'
 
@@ -71,7 +71,7 @@ export interface FluxAnalysis {
 /** Un passage de l'Auditeur sur un projet : lit le source UNE fois, mesure, écrit
  * les observations, et renvoie graphe + rapport + fichiers (pour le Tier 1). */
 export function analyzeFlux(projDir: string, deps: FluxEyeDeps = {}): FluxAnalysis {
-  const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
+  const writeFile = deps.writeFile ?? atomicWriteFileSync
   const now = deps.now ?? (() => Date.now())
   const readSource = deps.readSource ?? readAllSource
 
