@@ -8,6 +8,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { auditSuite, type SuiteApp, type SuiteObservation, type CollectionAccess } from './audit.js'
+import { atomicWriteFileSync } from '../fs-shared.js'
 
 export const SUITE_OBSERVATIONS_FILE = 'suite-observations.json'
 const MANIFEST = '.mangoapp.json'
@@ -79,7 +80,7 @@ export interface SuiteEyeDeps {
 
 /** Un passage de l'Auditeur de Suite : charge les apps, mesure, écrit, renvoie le rapport. */
 export function analyzeSuite(workspaceDir: string, deps: SuiteEyeDeps = {}): { obs: SuiteObservation; apps: SuiteApp[] } {
-  const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
+  const writeFile = deps.writeFile ?? atomicWriteFileSync
   const now = deps.now ?? (() => Date.now())
   const readApps = deps.readApps ?? readSuiteApps
 

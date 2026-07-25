@@ -1,7 +1,10 @@
 // Tests du module partagé fs-shared.ts (#R3).
 // Déterministe, zéro réseau, zéro LLM, zéro disque réel (fs en mémoire injecté).
 import { describe, it, expect } from 'vitest'
-import { renderFiles, walkTree, type WalkEntry, type WalkFs } from '../../src/fs-shared.js'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { renderFiles, walkTree, atomicWriteFileSync, type WalkEntry, type WalkFs } from '../../src/fs-shared.js'
 import type { ProjectFile } from '../../src/types.js'
 
 describe('fs-shared', () => {
@@ -143,6 +146,36 @@ describe('fs-shared', () => {
       })
       expect(acc.map(p => p.replace(/\\/g, '/')).includes('a.ts')).toBe(true)
       expect(errored).not.toBeNull()
+    })
+  })
+
+  // atomicWriteFileSync fait de la VRAIE I/O (rename atomique) — contrairement au reste
+  // du fichier (fs en mémoire), on teste sur un dossier temp réel, nettoyé après.
+  describe('atomicWriteFileSync', () => {
+    it('écrit le contenu final correct et ne laisse aucun fichier .tmp derrière', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mangoqa-atomic-'))
+      try {
+        const target = path.join(dir, 'obs.json')
+        atomicWriteFileSync(target, '{"a":1}')
+        expect(fs.readFileSync(target, 'utf8')).toBe('{"a":1}')
+        // Aucun résidu .tmp-* (le rename a bien consommé le temporaire).
+        expect(fs.readdirSync(dir).filter(n => n.includes('.tmp'))).toEqual([])
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('écrase proprement un fichier existant (2 écritures successives)', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mangoqa-atomic-'))
+      try {
+        const target = path.join(dir, 'obs.json')
+        atomicWriteFileSync(target, 'premier')
+        atomicWriteFileSync(target, 'second')
+        expect(fs.readFileSync(target, 'utf8')).toBe('second')
+        expect(fs.readdirSync(dir)).toEqual(['obs.json'])
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
     })
   })
 })

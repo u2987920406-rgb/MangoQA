@@ -15,6 +15,7 @@ import path from 'node:path'
 import { readJsonlTail } from './jsonl.js'
 import { retexPath, type RetexEntry } from './retex.js'
 import { analyzeEvents, renderObserverReport, type ObserverEvent, type ObserverReport } from './observer.js'
+import { atomicWriteFileSync } from './fs-shared.js'
 
 /** Fenêtre relue par l'Observateur : plus large que les 6 entrées réinjectées dans les
  *  prompts par `loadRetexConstraints` (retex.ts) — on veut assez d'historique pour que
@@ -85,14 +86,6 @@ function defaultReadEntries(workspace: string): RetexEntry[] {
   })
 }
 
-/** Écriture atomique (tmp + rename) : le rapport n'est jamais lu à moitié écrit. Le repo
- *  n'a pas de helper partagé pour ça (vérifié) — implémentation minimale locale. */
-function atomicWrite(file: string, data: string): void {
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`
-  fs.writeFileSync(tmp, data, 'utf8')
-  fs.renameSync(tmp, file)
-}
-
 /** Gate d'activation — QA_OBSERVER=on|1|true|yes (insensible casse), défaut OFF. Même
  *  esprit que SUITE_EYE (index.ts) : opt-in, ne change rien au comportement historique
  *  tant que la variable n'est pas posée. */
@@ -106,7 +99,7 @@ export function observerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  *  échec est avalé mais TRACÉ (console.warn, fail-open ≠ fail-silent). */
 export function runObserver(workspace: string, deps: ObserverRunnerDeps = {}, env: NodeJS.ProcessEnv = process.env): void {
   const readEntries = deps.readEntries ?? defaultReadEntries
-  const writeReport = deps.writeReport ?? atomicWrite
+  const writeReport = deps.writeReport ?? atomicWriteFileSync
   const now = deps.now ?? (() => new Date())
 
   try {
