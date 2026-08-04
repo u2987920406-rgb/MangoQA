@@ -1,0 +1,131 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 1,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 21496
+    },
+    {
+      "branch": "security",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 0,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 21883
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 0,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 20426
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 17346
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Vulnérabilité XSS persistante critique : le contenu HTML non assaini est stocké dans la base de données et rendu directement via dangerouslySetInnerHTML.",
+      "durationMs": 21883
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contraste des liens de navigation est insuffisant pour un texte normal.",
+      "durationMs": 20426
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant est un monolithe qui mélange la gestion des données multiples, les calculs métier complexes et le rendu UI dans une seule unité.",
+      "durationMs": 23606
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le hook useEffect ne dépend pas de l'ID du composant, ce qui empêche le rechargement des données si l'ID change.",
+      "durationMs": 16522
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant respecte les bonnes pratiques de performance (gestion des clés, pagination et dépendances useEffect). Aucune violation coûteuse n'a été détectée.",
+      "durationMs": 18170
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "fail",
+      "outcome": "faux-positif",
+      "summary": "Le composant mélange la gestion de l'état, le fetching des données (side effect) et la présentation, violant la séparation des responsabilités.",
+      "durationMs": 19385
+    }
+  ],
+  "totalMs": 119992
+}

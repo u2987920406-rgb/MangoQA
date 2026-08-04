@@ -1,0 +1,131 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 1,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 22834
+    },
+    {
+      "branch": "security",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 0,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 20397
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 0,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 18682
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 13964
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "XSS potentiel via dangerouslySetInnerHTML avec donnée non assainie.",
+      "durationMs": 20397
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contraste entre le texte et l'arrière-plan est insuffisant.",
+      "durationMs": 18682
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le fichier Dashboard.tsx est un monolithe avec plus de 300 lignes et mélange logique métier, data-fetching et présentation.",
+      "durationMs": 25375
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le tableau de dépendances de useEffect est manquant.",
+      "durationMs": 17623
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 10305
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "fail",
+      "outcome": "faux-positif",
+      "summary": "Le composant ListeProduits mélange la logique de récupération des données avec la présentation.",
+      "durationMs": 20293
+    }
+  ],
+  "totalMs": 112676
+}

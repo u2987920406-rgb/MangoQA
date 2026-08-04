@@ -1,0 +1,415 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 3,
+      "detectes": 3,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 4,
+      "fauxPositifs": 1,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 89538
+    },
+    {
+      "branch": "security",
+      "casDefaut": 5,
+      "detectes": 4,
+      "rates": 0,
+      "nonPertinents": 1,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 35381
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 4,
+      "detectes": 4,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 3,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 62801
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 3,
+      "detectes": 2,
+      "rates": 0,
+      "nonPertinents": 1,
+      "casPropres": 3,
+      "fauxPositifs": 0,
+      "abstentions": 1,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 64016
+    },
+    {
+      "branch": "tests",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 57118
+    },
+    {
+      "branch": "design-system",
+      "casDefaut": 0,
+      "detectes": 0,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 2,
+        "obtenues": 2
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 89715
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "non-pertinent",
+      "outcome": "non-pertinent",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 1
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Utilisation de dangerouslySetInnerHTML avec des données utilisateur non assainies stockées en base.",
+      "durationMs": 76643
+    },
+    {
+      "caseId": "SEC-03-injection-sql",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Injection SQL directe via concaténation de chaîne dans la requête.",
+      "durationMs": 16553
+    },
+    {
+      "caseId": "SEC-04-cors-wildcard",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Configuration CORS permissive avec origin '*' combiné à credentials true.",
+      "durationMs": 24186
+    },
+    {
+      "caseId": "SEC-05-path-traversal",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Path traversal critique : concaténation directe d'un paramètre URL dans un chemin fichier sans validation.",
+      "durationMs": 20910
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Ratio de contraste insuffisant (#9a9a9a sur #ffffff = 1.64:1, seuil AA = 4.5:1)",
+      "durationMs": 104364
+    },
+    {
+      "caseId": "A11Y-02-img-sans-alt",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les balises img générées dans la boucle manquent d'attribut alt obligatoire.",
+      "durationMs": 49061
+    },
+    {
+      "caseId": "A11Y-03-div-cliquable",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant utilise une div cliquable sans sémantique bouton ni accessibilité clavier.",
+      "durationMs": 50199
+    },
+    {
+      "caseId": "A11Y-04-input-sans-label",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les champs input email et password n'ont aucun label associé ni aria-label, le placeholder ne suffit pas.",
+      "durationMs": 51447
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Violation séparation des responsabilités : logique métier, fetch et rendu cohabitent dans le même composant.",
+      "durationMs": 77020
+    },
+    {
+      "caseId": "ARCH-02-duplication",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Duplication identique de la fonction utilitaire formatPrix dans trois fichiers distincts.",
+      "durationMs": 24530
+    },
+    {
+      "caseId": "ARCH-03-couplage-ui-db",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant UI importe directement la connexion DB et exécute des requêtes SQL ; couplage fort UI-DB et mélange data-fetching/présentation.",
+      "durationMs": 91607
+    },
+    {
+      "caseId": "PERF-01-liste-non-virtualisee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Rendu de 5000 éléments en une seule liste sans virtualisation — dégradation critique des Web Vitals (LCP/FCP).",
+      "durationMs": 106034
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "useEffect sans tableau de dépendances provoque une boucle de rendu infinie.",
+      "durationMs": 24294
+    },
+    {
+      "caseId": "PERF-03-import-lourd",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "non-pertinent",
+      "outcome": "non-pertinent",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "TEST-01-logique-non-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Logique financière critique (remises, TVA) livrée sans aucun test automatisé.",
+      "durationMs": 20451
+    },
+    {
+      "caseId": "TEST-02-controle-logique-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Logique métier de remise (3 paliers tarifaires) couverte par 3 tests Vitest validant chaque branche et les seuils critiques.",
+      "durationMs": 93785
+    },
+    {
+      "caseId": "DS-01-couleurs-hors-palette",
+      "branch": "design-system",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Promo.tsx utilise 7 valeurs de couleur magiques (#fef3c7, #fbbf24, #7c2d12, #92400e, #f97316, #fffbeb, #ea580c) au lieu des tokens CSS disponibles — créer les tokens manquants (--warning-bg, --warning-border, --warning-text, etc.) et refactoriser le composant.",
+      "mentioned": true,
+      "durationMs": 105673
+    },
+    {
+      "caseId": "DS-02-espacements-arbitraires",
+      "branch": "design-system",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Remplacer les valeurs arbitraires (13px, 27px, 7, 11) par des tokens d'espacement sur une grille 4/8px.",
+      "mentioned": true,
+      "durationMs": 73757
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant et utilitaire correctement séparés, responsabilités bien délimitées, aucune violation structurelle détectée.",
+      "durationMs": 98521
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant AlerteStock conforme WCAG 2.2 : bouton sémantique, rôle status/aria-live approprié pour alerte, texte accessible.",
+      "durationMs": 90450
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant simple sans anti-patterns de performance détectés (pas de création inline, pas de dépendances manquantes, pas de calculs lourds sans mécanique).",
+      "durationMs": 94818
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Code sécurisé — requête SQL paramétrée, CORS whitelisté, pas de secrets exposés.",
+      "durationMs": 109373
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Séparation claire des responsabilités, fichiers ciblés et maintenables. Pas de violation structurelle détectée.",
+      "durationMs": 102219
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Fichiers backend (Node/Express) hors scope de l'audit performance React/Web Vitals.",
+      "durationMs": 45762
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant de connexion bien structuré : labels associés, inputs correctement liés, erreur annoncée avec role=alert.",
+      "durationMs": 94084
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant de présentation bien architecturé : pas de violation structurelle détectée.",
+      "durationMs": 92158
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Code exempt d'anti-patterns React critiques : clés stables (key=p.id, pas d'index), dépendances useEffect complètes [page], pas de travail coûteux dans le rendu.",
+      "durationMs": 113185
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "fail",
+      "outcome": "faux-positif",
+      "summary": "Composant monolithe mélange data-fetching, état et présentation dans une même responsabilité.",
+      "durationMs": 140711
+    }
+  ],
+  "totalMs": 1991801
+}

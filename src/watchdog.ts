@@ -20,9 +20,10 @@ import {
   DEFAULT_STALE_THRESHOLD_MS,
   FAST_FAILURE_THRESHOLD_MS,
 } from "./watchdog-core.js";
+import { mangoqaRoot } from "./config.js";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const WORKSPACE = (process.env.MANGOAI_WORKSPACE ?? "").trim();
+const WORKSPACE = mangoqaRoot();
 const SENTINEL_PATH = WORKSPACE ? path.join(WORKSPACE, ".mangoqa-active") : "";
 const LOG_PATH = path.join(ROOT, "watchdog.log");
 const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
@@ -110,7 +111,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 if (!WORKSPACE) {
-  log("MANGOAI_WORKSPACE absent — le worker se coupera lui-même au démarrage (comportement normal de index.ts), le watchdog le relancera quand même en boucle. Vérifie .env.");
+  log("MANGOQA_ROOT (ou MANGOAI_WORKSPACE) absent — le worker se coupera lui-même au démarrage (comportement normal de index.ts), le watchdog le relancera quand même en boucle. Vérifie .env.");
 }
 log(`watchdog démarré (workspace="${WORKSPACE || "?"}", seuil heartbeat=${DEFAULT_STALE_THRESHOLD_MS}ms)`);
 spawnChild();

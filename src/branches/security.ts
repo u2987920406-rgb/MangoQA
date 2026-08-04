@@ -2,10 +2,23 @@
 import { auditWithLLM } from '../llm.js'
 import type { Branch, ProjectFile } from '../types.js'
 
-const SENSITIVE_PATH = /(server|api|auth|supabase|\.env|config)/i
+const SENSITIVE_PATH = /(server|api|auth|supabase|\.env|config|lib|db|client)/i
 // Motifs qui rendent un fichier pertinent même hors chemin sensible.
+//
+// (2026-08-04, mesure J0 — eval/rapports/J0-2026-08-04-17-47-21.md) `import.meta.env`
+// AJOUTÉ, ainsi que les noms de clés en MAJUSCULES et `service_role`.
+// Incident mesuré : le cas SEC-01 (clé de SERVICE Supabase préfixée VITE_, donc
+// inlinée dans le bundle client) n'était JAMAIS retenu par ce filtre — le fichier
+// n'a jamais atteint le modèle, verdict « non pertinent » en 0,0 s.
+// Cause : ce filtre ne connaissait que `process.env` (convention Node), alors que
+// tout le front Vite — donc TOUTES les apps générées par MangoOS — écrit
+// `import.meta.env`. Et `VITE_SUPABASE_SERVICE_ROLE_KEY` ne correspondait pas à
+// `api[_-]?key` (le mot est SERVICE_ROLE_KEY, pas API_KEY).
+// La spécialité du prompt ci-dessous mentionnait POURTANT déjà « préfixe VITE_ pour
+// une clé secrète » : le jugement était prévu, c'est le filtre qui l'empêchait
+// d'arriver. Classe de bug à retenir — un filtre trop étroit rend un bon prompt muet.
 const SENSITIVE_CONTENT =
-  /(api[_-]?key|secret|password|token|dangerouslySetInnerHTML|eval\(|innerHTML|process\.env|cors\(|exec\(|child_process)/i
+  /(api[_-]?key|secret|password|token|service_role|[A-Z0-9_]*_KEY\b|dangerouslySetInnerHTML|eval\(|innerHTML|process\.env|import\.meta\.env|cors\(|exec\(|child_process)/i
 
 export const security: Branch = {
   id: 'security',

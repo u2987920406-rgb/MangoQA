@@ -1,0 +1,1039 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 3,
+      "detectes": 3,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 4,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 14688
+    },
+    {
+      "branch": "security",
+      "casDefaut": 5,
+      "detectes": 5,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 14714
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 4,
+      "detectes": 4,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 3,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 12307
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 3,
+      "detectes": 3,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 3,
+      "fauxPositifs": 0,
+      "abstentions": 3,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 13675
+    },
+    {
+      "branch": "tests",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 14081
+    },
+    {
+      "branch": "design-system",
+      "casDefaut": 0,
+      "detectes": 0,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 6,
+        "obtenues": 6
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 10272
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Clé de service exposée dans le code.",
+      "durationMs": 20100
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "XSS potentiel via dangerouslySetInnerHTML avec donnée non assainie.",
+      "durationMs": 20124
+    },
+    {
+      "caseId": "SEC-03-injection-sql",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Injection SQL potentiellement exploitable via la requête construite par concaténation.",
+      "durationMs": 22623
+    },
+    {
+      "caseId": "SEC-04-cors-wildcard",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "CORS configuré avec origin '*' et credentials true.",
+      "durationMs": 17156
+    },
+    {
+      "caseId": "SEC-05-path-traversal",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le chemin de fichier est construit à partir d'une entrée utilisateur sans validation.",
+      "durationMs": 15680
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contraste entre le texte et l'arrière-plan est insuffisant.",
+      "durationMs": 18144
+    },
+    {
+      "caseId": "A11Y-02-img-sans-alt",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les balises <img> manquent l'attribut alt pertinent.",
+      "durationMs": 16016
+    },
+    {
+      "caseId": "A11Y-03-div-cliquable",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Un élément cliquable est un div sans rôle clavier.",
+      "durationMs": 19131
+    },
+    {
+      "caseId": "A11Y-04-input-sans-label",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les éléments <input> n'ont pas de <label> associé.",
+      "durationMs": 15204
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant Dashboard est un monolithe avec plus de 300 lignes et gère plusieurs responsabilités (chargement des données, calculs, formatage, affichage).",
+      "durationMs": 25300
+    },
+    {
+      "caseId": "ARCH-02-duplication",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La fonction formatPrix est dupliquée dans trois fichiers différents.",
+      "durationMs": 16053
+    },
+    {
+      "caseId": "ARCH-03-couplage-ui-db",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant UserBadge importe directement un client de base de données, ce qui crée un couplage fort évitable.",
+      "durationMs": 19192
+    },
+    {
+      "caseId": "PERF-01-liste-non-virtualisee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Rendu d'une très grande liste sans pagination ni virtualisation.",
+      "durationMs": 16852
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le tableau de dépendances de useEffect est manquant.",
+      "durationMs": 16122
+    },
+    {
+      "caseId": "PERF-03-import-lourd",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Import d'une librairie entière pour une ou deux fonctions.",
+      "durationMs": 20620
+    },
+    {
+      "caseId": "TEST-01-logique-non-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La logique métier des fonctions remise et totalTTC n'est pas couverte par de tests.",
+      "durationMs": 18983
+    },
+    {
+      "caseId": "TEST-02-controle-logique-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique métier est couverte par des tests.",
+      "durationMs": 9773
+    },
+    {
+      "caseId": "DS-01-couleurs-hors-palette",
+      "branch": "design-system",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Les couleurs utilisées dans le composant Promo sont cohérentes avec la palette de tokens définie.",
+      "mentioned": true,
+      "durationMs": 11611
+    },
+    {
+      "caseId": "DS-02-espacements-arbitraires",
+      "branch": "design-system",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Les espacements sont cohérents avec l'échelle de 4/8px.",
+      "mentioned": true,
+      "durationMs": 9796
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et fait une seule chose : afficher des informations de stock.",
+      "durationMs": 10779
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète détectée.",
+      "durationMs": 9621
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern ou problème de performance détecté.",
+      "durationMs": 9444
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune vulnérabilité OWASP détectée dans le code fourni.",
+      "durationMs": 9779
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune violation structurelle claire détectée.",
+      "durationMs": 10104
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Aucun élément pertinent à auditer dans les fichiers fournis.",
+      "durationMs": 9542
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Tous les éléments sont correctement associés et structurés.",
+      "durationMs": 9235
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et gère ses propres données de manière idiomatique.",
+      "durationMs": 10950
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 9977
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et idiomatique pour React.",
+      "durationMs": 10040
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Clé de service exposée dans le code.",
+      "durationMs": 16067
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "XSS potentiel via dangerouslySetInnerHTML avec donnée non assainie.",
+      "durationMs": 19957
+    },
+    {
+      "caseId": "SEC-03-injection-sql",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Injection SQL potentiellement exploitable via la requête construite par concaténation.",
+      "durationMs": 22426
+    },
+    {
+      "caseId": "SEC-04-cors-wildcard",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "CORS configuré avec origin '*' et credentials true.",
+      "durationMs": 17074
+    },
+    {
+      "caseId": "SEC-05-path-traversal",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le chemin de fichier est construit à partir d'une entrée utilisateur sans validation.",
+      "durationMs": 15770
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contraste entre le texte et l'arrière-plan est insuffisant.",
+      "durationMs": 17253
+    },
+    {
+      "caseId": "A11Y-02-img-sans-alt",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les balises <img> manquent l'attribut alt pertinent.",
+      "durationMs": 16077
+    },
+    {
+      "caseId": "A11Y-03-div-cliquable",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Un élément cliquable est un div sans rôle clavier.",
+      "durationMs": 18935
+    },
+    {
+      "caseId": "A11Y-04-input-sans-label",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les éléments <input> n'ont pas de <label> associé.",
+      "durationMs": 15771
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant Dashboard est un monolithe avec plus de 300 lignes et gère plusieurs responsabilités (chargement des données, calculs, formatage, affichage).",
+      "durationMs": 25371
+    },
+    {
+      "caseId": "ARCH-02-duplication",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La fonction formatPrix est dupliquée dans trois fichiers différents.",
+      "durationMs": 17489
+    },
+    {
+      "caseId": "ARCH-03-couplage-ui-db",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant UserBadge importe directement un client de base de données, ce qui crée un couplage fort évitable.",
+      "durationMs": 20567
+    },
+    {
+      "caseId": "PERF-01-liste-non-virtualisee",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Rendu d'une très grande liste sans pagination ni virtualisation.",
+      "durationMs": 15924
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le tableau de dépendances de useEffect est manquant.",
+      "durationMs": 18586
+    },
+    {
+      "caseId": "PERF-03-import-lourd",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Import d'une librairie entière pour une ou deux fonctions.",
+      "durationMs": 21355
+    },
+    {
+      "caseId": "TEST-01-logique-non-testee",
+      "branch": "tests",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La logique métier des fonctions remise et totalTTC n'est pas couverte par de tests.",
+      "durationMs": 18411
+    },
+    {
+      "caseId": "TEST-02-controle-logique-testee",
+      "branch": "tests",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique métier est couverte par des tests.",
+      "durationMs": 9880
+    },
+    {
+      "caseId": "DS-01-couleurs-hors-palette",
+      "branch": "design-system",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Les couleurs utilisées dans le composant Promo sont cohérentes avec la palette de tokens définie.",
+      "mentioned": true,
+      "durationMs": 10500
+    },
+    {
+      "caseId": "DS-02-espacements-arbitraires",
+      "branch": "design-system",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Les espacements sont cohérents avec l'échelle de 4/8px.",
+      "mentioned": true,
+      "durationMs": 9708
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et fait une seule chose : afficher des informations de stock.",
+      "durationMs": 10685
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "security",
+      "pass": 2,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète détectée.",
+      "durationMs": 9184
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern ou problème de performance détecté.",
+      "durationMs": 9261
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "security",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune vulnérabilité OWASP détectée dans le code fourni.",
+      "durationMs": 9593
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune violation structurelle claire détectée.",
+      "durationMs": 9684
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Aucun élément pertinent à auditer dans les fichiers fournis.",
+      "durationMs": 9432
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Tous les éléments sont correctement associés et structurés.",
+      "durationMs": 9193
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et gère ses propres données de manière idiomatique.",
+      "durationMs": 11112
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 10114
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et idiomatique pour React.",
+      "durationMs": 10259
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "security",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Clé de service exposée dans le code.",
+      "durationMs": 16128
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "XSS potentiel via dangerouslySetInnerHTML avec donnée non assainie.",
+      "durationMs": 20699
+    },
+    {
+      "caseId": "SEC-03-injection-sql",
+      "branch": "security",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Injection SQL potentiellement exploitable via la requête construite par concaténation.",
+      "durationMs": 23978
+    },
+    {
+      "caseId": "SEC-04-cors-wildcard",
+      "branch": "security",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "CORS configuré avec origin '*' et credentials true.",
+      "durationMs": 16368
+    },
+    {
+      "caseId": "SEC-05-path-traversal",
+      "branch": "security",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le chemin de fichier est construit à partir d'une entrée utilisateur sans validation.",
+      "durationMs": 15731
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contraste entre le texte et l'arrière-plan est insuffisant.",
+      "durationMs": 17282
+    },
+    {
+      "caseId": "A11Y-02-img-sans-alt",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les balises <img> manquent l'attribut alt pertinent.",
+      "durationMs": 15521
+    },
+    {
+      "caseId": "A11Y-03-div-cliquable",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Un élément cliquable est un div sans rôle clavier.",
+      "durationMs": 18451
+    },
+    {
+      "caseId": "A11Y-04-input-sans-label",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les éléments <input> n'ont pas de <label> associé.",
+      "durationMs": 15109
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant Dashboard est un monolithe avec plus de 300 lignes et gère plusieurs responsabilités (chargement des données, calculs, formatage, affichage).",
+      "durationMs": 25343
+    },
+    {
+      "caseId": "ARCH-02-duplication",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La fonction formatPrix est dupliquée dans trois fichiers différents.",
+      "durationMs": 15680
+    },
+    {
+      "caseId": "ARCH-03-couplage-ui-db",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant UserBadge importe directement un client de base de données, ce qui crée un couplage fort évitable.",
+      "durationMs": 18521
+    },
+    {
+      "caseId": "PERF-01-liste-non-virtualisee",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Rendu d'une très grande liste sans pagination ni virtualisation.",
+      "durationMs": 15525
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le tableau de dépendances de useEffect est manquant.",
+      "durationMs": 16086
+    },
+    {
+      "caseId": "PERF-03-import-lourd",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Import d'une librairie entière pour une ou deux fonctions.",
+      "durationMs": 18524
+    },
+    {
+      "caseId": "TEST-01-logique-non-testee",
+      "branch": "tests",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La logique métier des fonctions remise et totalTTC n'est pas couverte par de tests.",
+      "durationMs": 17653
+    },
+    {
+      "caseId": "TEST-02-controle-logique-testee",
+      "branch": "tests",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique métier est couverte par des tests.",
+      "durationMs": 9784
+    },
+    {
+      "caseId": "DS-01-couleurs-hors-palette",
+      "branch": "design-system",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Les couleurs utilisées dans le composant Promo sont cohérentes avec la palette de tokens définie.",
+      "mentioned": true,
+      "durationMs": 10525
+    },
+    {
+      "caseId": "DS-02-espacements-arbitraires",
+      "branch": "design-system",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Les espacements sont cohérents avec l'échelle de 4/8px.",
+      "mentioned": true,
+      "durationMs": 9494
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et fait une seule chose : afficher des informations de stock.",
+      "durationMs": 10834
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "security",
+      "pass": 3,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "correct-pass",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète détectée.",
+      "durationMs": 9360
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern ou problème de performance détecté.",
+      "durationMs": 9370
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "security",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune vulnérabilité OWASP détectée dans le code fourni.",
+      "durationMs": 9734
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune violation structurelle claire détectée.",
+      "durationMs": 9733
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Aucun élément pertinent à auditer dans les fichiers fournis.",
+      "durationMs": 9463
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Tous les éléments sont correctement associés et structurés.",
+      "durationMs": 8964
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et gère ses propres données de manière idiomatique.",
+      "durationMs": 10869
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 9948
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Le composant est court et idiomatique pour React.",
+      "durationMs": 9892
+    }
+  ],
+  "totalMs": 1268168
+}

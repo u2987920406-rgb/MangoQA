@@ -76,6 +76,20 @@ const OLLAMA_RETRY_ATTEMPTS = 2 // tentatives SUPPLÉMENTAIRES → 3 essais Olla
 const OLLAMA_RETRY_DELAY_MS = 1_500
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** (2026-08-04) Mode SOUVERAIN STRICT — `QA_LOCAL_ONLY=on` : jamais de repli Claude.
+ *
+ *  Deux usages, l'un produit, l'autre méthodologique :
+ *  • PRODUIT — un utilisateur qui veut la garantie qu'aucun octet de son code ne
+ *    quitte sa machine. Pendant du gate BRAIN_LOCAL_ONLY côté MangoOS.
+ *  • MESURE — sans ça, évaluer un cerveau local est IMPOSSIBLE : à chaque échec
+ *    d'Ollama le repli Claude répond à sa place, et on croit mesurer le modèle local
+ *    alors qu'on mesure Claude. L'échec doit rester VISIBLE pour être compté.
+ *
+ *  OFF (défaut) → comportement byte-identique : le repli Claude reste actif. */
+function localOnly(): boolean {
+  return /^(on|1|true|yes)$/i.test((process.env.QA_LOCAL_ONLY ?? '').trim())
+}
+
 /** (system, user) → texte, PRIMAIRE Ollama (retry + backoff avant d'abandonner) + REPLI
  *  Claude seulement après épuisement des tentatives. Ne lève QUE si Claude échoue aussi.
  *  Dépendances injectables (tests) — défaut = le vrai dispatcher Ollama/Claude/setTimeout. */
@@ -101,10 +115,18 @@ export async function askLLM(
       return await ask(system, user)
     } catch (err) {
       const willRetry = attempt < maxTries
+      const strict = localOnly()
       console.warn(
         `[mango-qa] Ollama tentative ${attempt}/${maxTries} échouée (${(err as Error)?.message ?? err})` +
-          (willRetry ? ` — nouvel essai dans ${retryDelayMs}ms.` : ' — repli Claude.'),
+          (willRetry
+            ? ` — nouvel essai dans ${retryDelayMs}ms.`
+            : strict
+              ? ' — QA_LOCAL_ONLY=on : AUCUN repli, échec assumé.'
+              : ' — repli Claude.'),
       )
+      // Souveraineté stricte : on lève au lieu de sortir vers un cloud. L'appelant
+      // (auditWithLLM) est déjà fail-open — l'audit devient un `skip`, jamais un crash.
+      if (!willRetry && strict) throw err
       if (willRetry) await sleep(retryDelayMs)
     }
   }

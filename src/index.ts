@@ -26,11 +26,13 @@ import { startDisjoncteur } from './breakers/runner.js'
 import { runObserver, observerEnabled } from './observer-runner.js'
 import { realFs } from './orchestrator.js'
 import { scanForSignals, filterChangedSignals, initFallbackScanState } from './watch-fallback.js'
+import { mangoqaRoot, rootVarName } from './config.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
 
-const WORKSPACE = (process.env.MANGOAI_WORKSPACE ?? '').trim()
+// (2026-08-04, J1) `MANGOQA_ROOT`, avec repli sur l'historique `MANGOAI_WORKSPACE`.
+const WORKSPACE = mangoqaRoot()
 const HEARTBEAT_MS = 10_000
 /** Auditeur de Suite câblé dans le cycle de phase — opt-in (défaut off = comportement historique). */
 const SUITE_EYE = (process.env.SUITE_EYE ?? '').trim().toLowerCase() === 'on'
@@ -39,7 +41,7 @@ const SUITE_EYE = (process.env.SUITE_EYE ?? '').trim().toLowerCase() === 'on'
 const OBSERVER_ON = observerEnabled()
 
 if (!WORKSPACE || !fs.existsSync(WORKSPACE)) {
-  console.error(`[mango-qa] MANGOAI_WORKSPACE introuvable : "${WORKSPACE}". Vérifie .env.`)
+  console.error(`[mango-qa] ${rootVarName()} introuvable : "${WORKSPACE}". Vérifie .env.`)
   process.exit(1)
 }
 
