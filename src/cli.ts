@@ -15,6 +15,7 @@ import 'dotenv/config'
 import { realpathSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { auditProject, ALL_BRANCHES, type AuditReport, type BranchResultLite } from './audit.js'
+import { CERVEAUX, cerveauPrimaire, type Cerveau } from './llm.js'
 
 const VERSION = '2.1.0'
 
@@ -38,6 +39,9 @@ USAGE
   mangoqa <dossier> [options]
 
 OPTIONS
+  --cerveau <nom>         Cerveau d'audit : ${CERVEAUX.join(' | ')}. Défaut : ollama.
+                          RECOMMANDÉ : claude (qualité de jugement nettement supérieure).
+  --modele <id>           Modèle du cerveau claude. Défaut : claude-opus-5.
   --only <a,b>            N'exécuter que ces branches (${ALL_BRANCHES.map(b => b.id).join(', ')})
   --concurrency <n>       Branches en parallèle (défaut 1 : verdicts au fil de l'eau).
                           Cerveau local mono-GPU : garder 1. Cerveau cloud : 6.
@@ -66,6 +70,8 @@ export interface CliOptions {
   only?: string[]
   concurrency: number
   cap?: number
+  cerveau?: Cerveau
+  modele?: string
   json: boolean
   jsonFichier?: string
   exigerCouverture: boolean
@@ -118,6 +124,17 @@ export function parseArgs(argv: string[]): CliOptions | { aide: string } {
         opts.cap = n
         break
       }
+      case '--cerveau': {
+        const v = valeur().trim().toLowerCase()
+        if (!(CERVEAUX as readonly string[]).includes(v)) {
+          throw new Error(`Cerveau inconnu : ${v}. Connus : ${CERVEAUX.join(', ')}.`)
+        }
+        opts.cerveau = v as Cerveau
+        break
+      }
+      case '--modele':
+        opts.modele = valeur()
+        break
       case '--json':
         opts.json = true
         // Valeur FACULTATIVE : `--json` seul écrit sur stdout.
@@ -137,6 +154,19 @@ export function parseArgs(argv: string[]): CliOptions | { aide: string } {
   }
 
   if (dossier === undefined) throw new Error('Aucun dossier indiqué. `mangoqa <dossier>`.')
+
+  // Contradiction refusée plutôt qu'arbitrée en silence : `QA_LOCAL_ONLY` promet
+  // qu'aucun octet ne sort de la machine, `--cerveau claude` envoie le code à un
+  // service distant. Choisir l'un des deux à la place de l'utilisateur trahirait
+  // soit sa demande, soit sa promesse de confidentialité — donc on s'arrête.
+  const strict = /^(on|1|true|yes)$/i.test((process.env.QA_LOCAL_ONLY ?? '').trim())
+  if (strict && opts.cerveau === 'claude') {
+    throw new Error(
+      'QA_LOCAL_ONLY=on interdit tout appel distant, mais --cerveau claude en exige un. ' +
+        'Choisissez : retirez QA_LOCAL_ONLY, ou utilisez --cerveau ollama.',
+    )
+  }
+
   opts.dossier = dossier
   return opts
 }
@@ -226,6 +256,8 @@ export async function main(argv: string[]): Promise<number> {
   // Le cap vit dans l'environnement (llm.ts le lit paresseusement) — on le pose avant
   // le premier appel, jamais après.
   if (opts.cap !== undefined) process.env.QA_FILE_PAYLOAD_CAP = String(opts.cap)
+  if (opts.cerveau !== undefined) process.env.QA_BRAIN = opts.cerveau
+  if (opts.modele !== undefined) process.env.QA_MODEL = opts.modele
 
   // `--json` sur stdout doit rester du JSON PUR : tout le reste part sur stderr, sinon
   // un `mangoqa . --json | jq` casse sur la première ligne de progression.
@@ -237,7 +269,12 @@ export async function main(argv: string[]): Promise<number> {
 
   let rapport: AuditReport
   try {
+    // Le cerveau est annoncé : deux audits rendus par deux cerveaux différents ne
+    // sont pas comparables, et un rapport qui tait lequel a jugé est inexploitable.
+    const cerveau = cerveauPrimaire()
+    const detail = cerveau === 'claude' ? process.env.QA_MODEL ?? 'claude-opus-5' : process.env.QA_OLLAMA_MODEL ?? '(défaut)'
     trace(`\n🥭 mangoqa — audit de ${opts.dossier}`)
+    trace(`   cerveau : ${cerveau} · ${detail}`)
     rapport = await auditProject(opts.dossier, {
       concurrency: opts.concurrency,
       ...(opts.only ? { only: opts.only } : {}),

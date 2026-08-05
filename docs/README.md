@@ -1,8 +1,13 @@
-# `docs/` — la face visible de Mango QA
+# `docs/` — le cap et la face visible de Mango QA
 
 | Fichier | Ce que c'est |
 |---|---|
+| **`adr/ADR-001-cap-produit.md`** | **La référence unique.** Décisions de cap, plan d'exécution par lots, et ce qu'on ne fait PAS. En cas de contradiction avec n'importe quel autre document, c'est lui qui gagne. |
 | `produit.html` | Maquette de page produit : à quoi sert Mango QA, pourquoi, pour qui, comment il s'utilise. Page autonome, ouvrable hors ligne. |
+
+> ⚠️ **Avant d'ouvrir un chantier, lire l'ADR-001.** Une idée qui n'entre dans aucun lot
+> ne se code pas — elle rejoint la liste « ce qu'on ne fait pas », ou attend l'ADR suivant.
+> Les trois seules portes de révision sont au § 5.
 
 ## L'angle de vente, et pourquoi c'est celui-là
 

@@ -1,13 +1,29 @@
-// Cerveau d'audit de Mango QA (#165 — souveraineté).
+// Cerveau d'audit de Mango QA — CHOIX de l'utilisateur, plus une hiérarchie figée.
 //
-// PRIMAIRE : askOllama (ollama-client.ts, qwen3.5:cloud) — souverain, $0 API,
-// n'entame pas le quota d'abonnement Claude Code partagé avec l'usage interactif.
-// REPLI : askClaude (ABONNEMENT Claude Code, $0 crédits API — subscriptionEnv()
-// neutralise les secrets pour ne jamais dériver vers les crédits payants NI fuiter
-// un secret vers le SDK), déclenché UNIQUEMENT si askOllama lève (Ollama injoignable/
-// HTTP en erreur/timeout) — jamais sur une réponse simplement illisible (ça, c'est un
-// problème de FORMAT, pas de DISPONIBILITÉ ; parseFirstJson/auditWithLLM le traitent
-// déjà en fail-open plus bas, sans re-solliciter un second cerveau — axiome 16/17).
+// (2026-08-05, décision de cadrage) Le cerveau est désormais SÉLECTIONNABLE par
+// `QA_BRAIN`, et le choix par défaut recommandé est **Claude Opus 5**. Ce qui a
+// changé : un cerveau local ne fait pas le poids face à un cerveau cloud sur la
+// qualité de jugement, et le nier ne servait que l'argument de souveraineté. Cet
+// argument reste servi — `QA_BRAIN=ollama` fait tourner l'audit sans qu'un octet
+// de code quitte la machine — mais il devient une OPTION assumée, pas la promesse.
+//
+//   QA_BRAIN=claude   → Claude en PRIMAIRE (défaut recommandé, `QA_MODEL`)
+//   QA_BRAIN=ollama   → Ollama en primaire, Claude en repli (comportement historique,
+//                       conservé par défaut pour ne pas casser l'intégration MangoOS)
+//
+// Pourquoi le repli n'existe QUE dans le sens ollama → claude : le repli sert à
+// couvrir une INDISPONIBILITÉ du primaire. Quand le primaire est déjà le cerveau le
+// plus capable, se rabattre sur un modèle plus faible rendrait un verdict de moindre
+// qualité SANS le dire — exactement le mensonge par omission que ce produit combat.
+// Claude en primaire échoue donc visiblement, et `auditWithLLM` en fait un `skip`
+// déclaré.
+//
+// `askClaude` tourne sur l'ABONNEMENT Claude Code ; `subscriptionEnv()` neutralise
+// les secrets pour ne jamais dériver vers des crédits payants NI fuiter un secret
+// vers le SDK. Le repli (mode ollama) ne se déclenche QUE si askOllama lève
+// (injoignable / HTTP en erreur / timeout) — jamais sur une réponse simplement
+// illisible : ça, c'est un problème de FORMAT, pas de DISPONIBILITÉ, et
+// parseFirstJson/auditWithLLM le traitent déjà plus bas.
 // (2026-08-05, J3 packaging) Import de TYPE seulement — effacé à la compilation. Le SDK
 // est chargé DYNAMIQUEMENT dans askClaude, et déclaré en dépendance de pair OPTIONNELLE.
 //
@@ -21,7 +37,25 @@ import type { AuditContext, AuditCoverage, BranchFinding, BranchStatus } from '.
 import { askOllama } from './ollama-client.js'
 import { renderFilesWithCoverage } from './fs-shared.js'
 
-const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
+/** Modèle Claude utilisé, en primaire comme en repli. Lecture PARESSEUSE : un
+ *  appelant (CLI, test, harnais) doit pouvoir le fixer avant le premier usage. */
+const qaModel = (): string => process.env.QA_MODEL ?? 'claude-opus-5'
+
+/** Les cerveaux sélectionnables. Ajouter une entrée ici est le seul endroit à
+ *  toucher pour en proposer un nouveau (passerelle OpenAI, etc.). */
+export const CERVEAUX = ['claude', 'ollama'] as const
+export type Cerveau = (typeof CERVEAUX)[number]
+
+/** Cerveau PRIMAIRE choisi par l'utilisateur (`QA_BRAIN`).
+ *
+ *  Défaut `ollama` — comportement historique préservé, pour ne pas changer sous les
+ *  pieds de l'intégration MangoOS ni des évals déjà mesurées. La CLI et la
+ *  documentation, elles, recommandent `claude` : c'est un défaut de PRODUIT, pas un
+ *  défaut de bibliothèque. Valeur inconnue → `ollama`, jamais une erreur silencieuse. */
+export function cerveauPrimaire(): Cerveau {
+  const brut = (process.env.QA_BRAIN ?? '').trim().toLowerCase()
+  return (CERVEAUX as readonly string[]).includes(brut) ? (brut as Cerveau) : 'ollama'
+}
 
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation).
  *
@@ -134,6 +168,14 @@ export async function askLLM(
     retryDelayMs?: number
   } = {},
 ): Promise<string> {
+  // CERVEAU CLAUDE EN PRIMAIRE — pas de repli, et c'est délibéré. Se rabattre sur un
+  // modèle moins capable rendrait un verdict de moindre qualité sans le déclarer.
+  // L'échec reste visible ; `auditWithLLM` le transforme en `skip` déclaré.
+  // (`deps.ask` reste prioritaire : les tests injectent leur propre cerveau.)
+  if (!deps.ask && cerveauPrimaire() === 'claude') {
+    return askClaude(system, user)
+  }
+
   const ask = deps.ask ?? askOllama
   const askFallback = deps.askFallback ?? askClaude
   const sleep = deps.sleep ?? defaultSleep
@@ -220,7 +262,7 @@ export async function askClaude(system: string, user: string): Promise<string> {
   const q = query({
     prompt: user,
     options: {
-      model: QA_MODEL,
+      model: qaModel(),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: system },
       maxTurns: 1,
       allowedTools: [],
