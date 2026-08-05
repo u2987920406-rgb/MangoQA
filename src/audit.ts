@@ -14,8 +14,8 @@
 // continue de servir l'intégration MangoOS — les deux partagent le même moteur.
 
 import path from 'node:path'
-import type { Branch, BranchFinding, PhaseSignal, ProjectFile, QAVerdict } from './types.js'
-import { readProjectFiles, projectHasTests, realFs, type FsLike } from './orchestrator.js'
+import type { AuditCoverage, Branch, BranchFinding, PhaseSignal, ProjectFile, QAVerdict } from './types.js'
+import { readProjectFiles, projectHasTests, realFs, type FsLike, type ReadStats } from './orchestrator.js'
 import { buildVerdict } from './verdict.js'
 import { architecture } from './branches/architecture.js'
 import { security } from './branches/security.js'
@@ -61,7 +61,25 @@ export interface BranchResultLite {
   finding: BranchFinding
   /** Fichiers effectivement retenus par `relevant()` pour cette branche. */
   filesAudited: number
+  /** Ce que le modèle a réellement LU parmi ces `filesAudited` (J1 défaut n°2).
+   *  `undefined` = branche sautée sans appel LLM (aucun fichier pertinent). */
+  coverage?: AuditCoverage
   durationMs: number
+}
+
+/** Couverture au niveau PROJET — les deux étages de perte, avant les branches.
+ *  (Les branches ont leur propre couverture de prompt dans `BranchResultLite`.) */
+export interface ReportCoverage {
+  /** Fichiers candidats découverts dans le projet. */
+  filesDiscovered: number
+  /** Fichiers réellement lus et soumis aux branches (cap `MAX_FILES`). */
+  filesRead: number
+  /** Chemins découverts mais jamais lus — nommés, pas seulement comptés. */
+  filesDropped: string[]
+  /** Fichiers lus mais COUPÉS à la lecture (cap `MAX_FILE_CHARS`). */
+  filesTruncated: string[]
+  /** Vrai si le projet entier a été lu ET vu par toutes les branches concernées. */
+  complete: boolean
 }
 
 export interface AuditReport {
@@ -72,6 +90,8 @@ export interface AuditReport {
   /** Le détail par branche — ce que le contrat figé ne porte pas. */
   branches: BranchResultLite[]
   filesScanned: number
+  /** Ce qui a été vu et ce qui ne l'a pas été. À afficher AVEC le verdict, jamais après. */
+  coverage: ReportCoverage
   durationMs: number
   /** Vrai si aucun fichier auditable n'a été trouvé (dossier vide, ou hors périmètre). */
   empty: boolean
@@ -98,7 +118,8 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
   }
 
   const t0 = now()
-  const files: ProjectFile[] = readProjectFiles(dir, opts.changedFiles ?? [], fsx)
+  const readStats: ReadStats = { discovered: 0, read: 0, dropped: [] }
+  const files: ProjectFile[] = readProjectFiles(dir, opts.changedFiles ?? [], fsx, readStats)
 
   // Le PhaseSignal reste le contrat d'entrée des branches — on le SYNTHÉTISE ici au
   // lieu de le lire sur disque. C'est tout ce qui séparait le moteur d'un usage libre.
@@ -118,6 +139,15 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
       verdict: { verdict: 'green', rejection: null, branches: {} },
       branches: [],
       filesScanned: 0,
+      coverage: {
+        filesDiscovered: readStats.discovered,
+        filesRead: 0,
+        filesDropped: readStats.dropped,
+        filesTruncated: [],
+        // Rien lu n'est pas « tout lu » : un dossier vide est complet, un dossier
+        // dont AUCUN fichier n'a pu être lu ne l'est pas.
+        complete: readStats.discovered === 0,
+      },
       durationMs: now() - t0,
       empty: true,
     }
@@ -143,6 +173,7 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
       blocking: branch.blocking,
       finding,
       filesAudited: relevant.length,
+      ...(finding.coverage ? { coverage: finding.coverage } : {}),
       durationMs: now() - started,
     }
     opts.onBranch?.(result)
@@ -158,12 +189,25 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
     signal.retryCount,
   )
 
+  const filesTruncated = files.filter(f => f.truncated).map(f => f.path)
   return {
     projectName,
     projectDir: dir,
     verdict,
     branches: results,
     filesScanned: files.length,
+    coverage: {
+      filesDiscovered: readStats.discovered,
+      filesRead: readStats.read,
+      filesDropped: readStats.dropped,
+      filesTruncated,
+      // Complet = les trois étages sont intacts : tout découvert a été lu, rien n'a
+      // été coupé à la lecture, et aucune branche n'a rendu une couverture partielle.
+      complete:
+        readStats.dropped.length === 0 &&
+        filesTruncated.length === 0 &&
+        results.every(r => r.coverage === undefined || r.coverage.complete),
+    },
     durationMs: now() - t0,
     empty: false,
   }

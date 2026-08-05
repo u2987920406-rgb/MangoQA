@@ -3,6 +3,29 @@
 Processus Node.js **indépendant** de MangoOS qui audite chaque phase de build et
 répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
 
+Depuis J1/J3 (2026-08), il s'utilise aussi **seul**, sans MangoOS, sans fichier-signal :
+
+```bash
+npm run audit -- ./mon-projet                    # verdict + couverture
+npm run audit -- ./mon-projet --only security,tests
+npm run audit -- . --json rapport.json --exiger-couverture
+```
+
+| Code de sortie | Sens |
+|---|---|
+| `0` | 🟢 Feu Vert |
+| `1` | 🔴 Feu Rouge — une branche bloquante a échoué |
+| `2` | Erreur d'usage (dossier introuvable, option inconnue). **Jamais** un défaut d'audit |
+| `3` | Feu Vert sur lecture **partielle**, avec `--exiger-couverture` |
+
+> **La couverture s'affiche avec le verdict, jamais en note de bas de page.** Mango QA dit
+> combien de fichiers il a réellement envoyés au modèle et **nomme ceux qu'il n'a pas vus**.
+> Un auditeur a le droit de ne pas tout lire ; il n'a pas le droit de le taire — c'est le
+> défaut n°2 de J1, corrigé en J2 (`eval/rapports/J2-COUVERTURE.md`).
+>
+> Le code `3` existe pour la CI : il est **distinct** du Feu Rouge, parce qu'aucun défaut
+> n'a été trouvé. On refuse seulement de traiter « rien vu » comme « rien à signaler ».
+
 > ⚠️ **Reconstruction du 2026-06-19.** Le code original (testé à l'atelier) n'a pas
 > pu être rapatrié (clé USB absente). Cette version a été **reconstruite à partir
 > du contrat d'interface figé** `mangoai/server/src/mangoqa.ts` + le guide de

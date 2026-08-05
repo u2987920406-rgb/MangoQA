@@ -4,7 +4,14 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { renderFiles, walkTree, atomicWriteFileSync, type WalkEntry, type WalkFs } from '../../src/fs-shared.js'
+import {
+  renderFiles,
+  renderFilesWithCoverage,
+  walkTree,
+  atomicWriteFileSync,
+  type WalkEntry,
+  type WalkFs,
+} from '../../src/fs-shared.js'
 import type { ProjectFile } from '../../src/types.js'
 
 describe('fs-shared', () => {
@@ -41,6 +48,85 @@ describe('fs-shared', () => {
       ]
       const out = renderFiles(files, 10) // cap minuscule : le header seul dépasse déjà
       expect(out).toBe('')
+    })
+  })
+
+  // ── Couverture de rendu (J1 défaut n°2 — l'audit partiel silencieux) ────────
+  // Ce que le modèle a réellement vu doit être MESURÉ ici, sinon plus rien en aval
+  // ne peut le déclarer. Le texte rendu, lui, doit rester byte-identique.
+  describe('renderFilesWithCoverage', () => {
+    it("tout tient sous le cap → complete, rien d'omis ni de coupé", () => {
+      const files: ProjectFile[] = [
+        { path: 'a.ts', content: 'const a = 1' },
+        { path: 'b.ts', content: 'const b = 2' },
+      ]
+      const { coverage } = renderFilesWithCoverage(files, 10_000)
+      expect(coverage.complete).toBe(true)
+      expect(coverage.filesRendered).toBe(2)
+      expect(coverage.filesTotal).toBe(2)
+      expect(coverage.omitted).toEqual([])
+      expect(coverage.charsRendered).toBe(coverage.charsTotal)
+    })
+
+    it('le cap abandonne les fichiers suivants : ils sont COMPTÉS ET NOMMÉS, pas perdus', () => {
+      // 3 fichiers de 1 000 car., cap 1 500 : le 1er passe, le 2e est coupé, le 3e saute.
+      const files: ProjectFile[] = [
+        { path: 'un.ts', content: 'x'.repeat(1_000) },
+        { path: 'deux.ts', content: 'y'.repeat(1_000) },
+        { path: 'trois.ts', content: 'z'.repeat(1_000) },
+      ]
+      const { coverage } = renderFilesWithCoverage(files, 1_500)
+      expect(coverage.complete).toBe(false)
+      expect(coverage.filesTotal).toBe(3)
+      expect(coverage.truncated).toEqual(['deux.ts'])
+      expect(coverage.omitted).toEqual(['trois.ts'])
+      expect(coverage.charsRendered).toBeLessThan(coverage.charsTotal)
+    })
+
+    it('cap minuscule : le fichier absent du payload est déclaré OMIS, jamais rendu', () => {
+      const files: ProjectFile[] = [
+        { path: 'huge.ts', content: 'z'.repeat(50) },
+        { path: 'next.ts', content: 'const n = 1' },
+      ]
+      const { text, coverage } = renderFilesWithCoverage(files, 10)
+      expect(text).toBe('')
+      expect(coverage.filesRendered).toBe(0)
+      expect(coverage.omitted).toEqual(['huge.ts', 'next.ts'])
+      expect(coverage.complete).toBe(false)
+    })
+
+    it('fichier DÉJÀ coupé en amont (MAX_FILE_CHARS) : jamais "complete", et le vrai total sert de dénominateur', () => {
+      const files: ProjectFile[] = [{ path: 'gros.ts', content: 'x'.repeat(100), truncated: true, fullChars: 50_000 }]
+      const { coverage } = renderFilesWithCoverage(files, 10_000)
+      // Tout ce qu'on nous a donné tient dans le prompt — mais ce n'est pas tout le fichier.
+      expect(coverage.filesRendered).toBe(1)
+      expect(coverage.sourceTruncated).toEqual(['gros.ts'])
+      expect(coverage.complete).toBe(false)
+      expect(coverage.charsTotal).toBe(50_000)
+      expect(coverage.charsRendered).toBe(100)
+    })
+
+    it("un fichier JAMAIS envoyé n'est pas déclaré « fourni mais coupé » — omis, point", () => {
+      const files: ProjectFile[] = [
+        { path: 'un.ts', content: 'x'.repeat(1_400) },
+        // Coupé au disque ET hors cap : il est ABSENT du prompt, pas amputé dedans.
+        { path: 'deux.ts', content: 'y'.repeat(1_000), truncated: true, fullChars: 40_000 },
+      ]
+      const { coverage } = renderFilesWithCoverage(files, 1_450)
+      expect(coverage.omitted).toEqual(['deux.ts'])
+      expect(coverage.sourceTruncated).toEqual([])
+      expect(coverage.complete).toBe(false)
+    })
+
+    it('le TEXTE rendu est identique à renderFiles (extraction, pas changement de comportement)', () => {
+      const files: ProjectFile[] = [
+        { path: 'a.ts', content: 'x'.repeat(1_000) },
+        { path: 'b.ts', content: 'y'.repeat(1_000) },
+        { path: 'c.ts', content: 'z'.repeat(1_000) },
+      ]
+      for (const cap of [10, 500, 1_500, 2_400, 10_000]) {
+        expect(renderFilesWithCoverage(files, cap).text).toBe(renderFiles(files, cap))
+      }
     })
   })
 

@@ -71,7 +71,16 @@ type Outcome =
   | 'faux-positif'   // rien à trouver ET la branche dit "fail"     → ❌ le bruit
   | 'correct-pass'   // rien à trouver ET la branche dit "pass"     → ✅
   | 'abstention'     // la branche dit "skip" (elle n'a pas jugé)
-  | 'non-pertinent'  // relevant() = [] : la branche n'a même pas regardé
+  | 'non-pertinent'  // défaut injecté MAIS relevant() = [] : trou de FILTRAGE
+  // (2026-08-05) Cas propre ET relevant() = [] : la branche n'avait rien à juger dans
+  // son domaine. Auparavant compté en `correct-pass` — c'est-à-dire porté au crédit de
+  // la branche comme un jugement propre réussi, alors qu'AUCUN jugement n'a eu lieu.
+  // Mesuré sur LONG-01 : security affichait « 0 faux positif sur 6 » là où elle n'avait
+  // réellement statué que 3 fois (LONG-01 n'a que du .jsx, hors de son périmètre).
+  // Un dénominateur gonflé de non-événements flatte le taux de faux positifs — et
+  // confondre « n'a pas regardé » avec « a regardé et n'a rien trouvé » est très
+  // exactement le défaut que ce projet corrige côté produit depuis J2.
+  | 'hors-perimetre'
 
 interface Observation {
   caseId: string
@@ -115,7 +124,9 @@ async function observe(c: EvalCase, branchId: BranchId, pass: number): Promise<O
       // Une branche qui ne REGARDE même pas un fichier porteur du défaut est un
       // trou de FILTRAGE, pas de jugement — distinct d'un raté, et souvent plus
       // grave (aucun modèle, si bon soit-il, ne peut le rattraper).
-      outcome: expected === 'fail' ? 'non-pertinent' : 'correct-pass',
+      // Sur un cas PROPRE, le même silence n'est ni un mérite ni une faute : c'est un
+      // non-événement, qui ne doit entrer dans aucun dénominateur (cf. `hors-perimetre`).
+      outcome: expected === 'fail' ? 'non-pertinent' : 'hors-perimetre',
       summary: 'Aucun fichier retenu par relevant().',
       durationMs: Date.now() - started,
     }
@@ -175,6 +186,11 @@ interface BranchStats {
   nonPertinents: number
   casPropres: number
   fauxPositifs: number
+  /** Observations propres RÉELLEMENT jugées — dénominateur honnête des faux positifs.
+   *  Exclut les `hors-perimetre`, où la branche n'a rien eu à regarder. */
+  jugementsPropres: number
+  /** Observations propres écartées faute de fichier dans le domaine de la branche. */
+  horsPerimetre: number
   abstentions: number
   mentions: { attendues: number; obtenues: number }
   /** Nombre de cas dont le verdict A CHANGÉ entre deux passes (si --repeat > 1). */
@@ -206,6 +222,8 @@ function aggregate(obs: Observation[]): BranchStats[] {
       nonPertinents: mine.filter((o) => o.outcome === 'non-pertinent').length,
       casPropres: [...parCas.values()].filter((l) => l[0].expected === 'pass').length,
       fauxPositifs: mine.filter((o) => o.outcome === 'faux-positif').length,
+      jugementsPropres: mine.filter((o) => o.expected === 'pass' && o.outcome !== 'hors-perimetre').length,
+      horsPerimetre: mine.filter((o) => o.outcome === 'hors-perimetre').length,
       abstentions: mine.filter((o) => o.outcome === 'abstention').length,
       mentions: {
         attendues: mine.filter((o) => o.mentioned !== undefined).length,
@@ -229,11 +247,24 @@ function report(obs: Observation[], stats: BranchStats[], totalMs: number): stri
   const L: string[] = []
   L.push('# Mango QA — J0 · Mesure de la qualité de jugement')
   L.push('')
-  L.push(`> Exécuté le ${new Date().toISOString()} · corpus : **${s.total} cas** (${s.defauts} à défaut · ${s.propres} propres)`)
+  // Heure LOCALE, pas UTC. `toISOString()` datait les rapports de 2 h dans le passé —
+  // même piège que dans _ceiling.ts, corrigé là-bas le 2026-08-04 et pas ici. Un rapport
+  // de mesure impossible à recouper avec les journaux système perd la moitié de sa valeur.
+  L.push(`> Exécuté le ${new Date().toLocaleString('sv-SE').slice(0, 16)} (heure locale) · corpus : **${s.total} cas** (${s.defauts} à défaut · ${s.propres} propres)`)
+  // (2026-08-05) L'en-tête décrit désormais les conditions RÉELLES du run, lues dans
+  // l'environnement — plus la façon dont on les a réglées. Avant, il n'annonçait « repli
+  // Claude COUPÉ » que si `--brain` avait été passé : régler `QA_LOCAL_ONLY=on` dans
+  // l'environnement donnait un rapport affirmant qu'un repli Claude était actif alors
+  // qu'il ne l'était pas. Un harnais de mesure qui se trompe sur ses propres conditions
+  // est exactement le défaut que ce projet existe pour traquer.
+  const strict = /^(on|1|true|yes)$/i.test((process.env.QA_LOCAL_ONLY ?? '').trim())
+  const modele = process.env.QA_OLLAMA_MODEL ?? '(non défini)'
+  const timeoutS = Number(process.env.QA_OLLAMA_TIMEOUT_MS ?? 25_000) / 1000
   L.push(
-    BRAIN
-      ? `> Passes : **${REPEAT}** · cerveau : **\`${BRAIN}\`** — repli Claude COUPÉ (\`QA_LOCAL_ONLY=on\`), timeout ${Number(process.env.QA_OLLAMA_TIMEOUT_MS) / 1000} s`
-      : `> Passes : **${REPEAT}** · cerveau : \`QA_OLLAMA_MODEL=${process.env.QA_OLLAMA_MODEL ?? '(non défini)'}\` → repli \`QA_MODEL=${process.env.QA_MODEL ?? 'sonnet'}\``,
+    `> Passes : **${REPEAT}** · cerveau : **\`${modele}\`** · timeout ${timeoutS} s · ` +
+      (strict
+        ? 'repli Claude **COUPÉ** (`QA_LOCAL_ONLY=on`) — un échec local reste un échec compté'
+        : `repli Claude **ACTIF** vers \`${process.env.QA_MODEL ?? 'sonnet'}\` ⚠️ une réponse peut ne PAS venir du modèle mesuré`),
   )
   L.push(`> Durée totale : ${(totalMs / 1000).toFixed(1)} s · observations : ${obs.length}`)
   L.push('')
@@ -242,8 +273,11 @@ function report(obs: Observation[], stats: BranchStats[], totalMs: number): stri
   L.push('| Branche | Détection | Ratés | Non pertinents | Faux positifs | Abstentions | Instables | Durée moy. |')
   L.push('|---|---|---|---|---|---|---|---|')
   for (const st of stats) {
+    // Dénominateur des faux positifs = observations propres RÉELLEMENT jugées. Les
+    // `hors-perimetre` sont affichés à côté, jamais fondus dedans.
+    const fp = `**${st.fauxPositifs}/${st.jugementsPropres}**${st.horsPerimetre ? ` (+${st.horsPerimetre} hors périmètre)` : ''}`
     L.push(
-      `| ${st.branch} | **${st.detectes}/${st.casDefaut}** (${pct(st.detectes, st.casDefaut)}) | ${st.rates} | ${st.nonPertinents} | **${st.fauxPositifs}/${st.casPropres * REPEAT}** | ${st.abstentions} | ${REPEAT > 1 ? st.instables : '—'} | ${(st.dureeMoyenneMs / 1000).toFixed(1)} s |`,
+      `| ${st.branch} | **${st.detectes}/${st.casDefaut}** (${pct(st.detectes, st.casDefaut)}) | ${st.rates} | ${st.nonPertinents} | ${fp} | ${st.abstentions} | ${REPEAT > 1 ? st.instables : '—'} | ${(st.dureeMoyenneMs / 1000).toFixed(1)} s |`,
     )
   }
   L.push('')
@@ -284,8 +318,16 @@ function report(obs: Observation[], stats: BranchStats[], totalMs: number): stri
   L.push('## Comment lire ces chiffres')
   L.push('')
   L.push('- **Détection** : un cas ne compte que si TOUTES les passes l\'ont détecté (exigeant volontairement).')
-  L.push('- **Non pertinent** : `relevant()` n\'a retenu aucun fichier — la branche n\'a même pas regardé.')
-  L.push('  C\'est un trou de **filtrage**, pas de jugement : aucun modèle, si bon soit-il, ne peut le rattraper.')
+  L.push('- **⚠️ Deux unités dans ce tableau.** « Détection » se compte en **cas** (dénominateur = nombre de cas')
+  L.push('  à défaut), « Faux positifs » et « Abstentions » en **observations** (cas × passes). `1/1` en détection')
+  L.push('  sur 3 passes veut donc dire « l\'unique cas à défaut, détecté aux 3 passes », pas « une passe sur une ».')
+  L.push('- **Non pertinent** : sur un cas à DÉFAUT, `relevant()` n\'a retenu aucun fichier — la branche')
+  L.push('  n\'a même pas regardé. C\'est un trou de **filtrage**, pas de jugement : aucun modèle, si bon')
+  L.push('  soit-il, ne peut le rattraper.')
+  L.push('- **Hors périmètre** : sur un cas PROPRE, `relevant()` n\'a rien retenu non plus. Ce n\'est ni un')
+  L.push('  mérite ni une faute, c\'est un non-événement — donc **exclu du dénominateur des faux positifs**.')
+  L.push('  Le compter en « pass correct » gonflait le dénominateur de jugements qui n\'ont jamais eu lieu,')
+  L.push('  et flattait le taux (corrigé le 2026-08-05 : security affichait 0/6 pour 3 jugements réels).')
   L.push('- **Abstention** : la branche a répondu `skip` (réponse illisible, erreur interne). Ni détection, ni faute.')
   L.push('- **Instables** : verdicts différents d\'une passe à l\'autre sur le même cas. Un auditeur instable est')
   L.push('  inutilisable en CI, même avec un bon taux de détection.')
@@ -343,6 +385,9 @@ async function main(): Promise<void> {
         : o.outcome === 'rate' ? '✗ RATÉ'
         : o.outcome === 'faux-positif' ? '⚠ FAUX POSITIF'
         : o.outcome === 'non-pertinent' ? '🚫 non pertinent'
+        // Non-événement : à ne PAS afficher comme une abstention, qui elle est un
+        // vrai échec de jugement (réponse illisible, erreur interne).
+        : o.outcome === 'hors-perimetre' ? '– hors périmètre'
         : '· abstention'
       console.log(`${mark} (${(o.durationMs / 1000).toFixed(1)} s)`)
     }
@@ -354,7 +399,9 @@ async function main(): Promise<void> {
 
   const outDir = path.join(process.cwd(), 'eval', 'rapports')
   fs.mkdirSync(outDir, { recursive: true })
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  // Heure LOCALE ici aussi : un rapport daté 00-34 dans son NOM et 02:34 dans son en-tête
+  // est un rapport qu'on classera mal et qu'on recoupera mal (même piège que l'en-tête).
+  const stamp = new Date().toLocaleString('sv-SE').slice(0, 19).replace(/[: ]/g, '-')
   const mdPath = path.join(outDir, `J0-${stamp}.md`)
   fs.writeFileSync(mdPath, md, 'utf8')
 

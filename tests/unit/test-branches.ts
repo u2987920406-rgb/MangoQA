@@ -20,12 +20,19 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
 }))
 
-// (#165) askLLM (llm.ts) tente Ollama AVANT Claude. Sans mock réseau, le fetch()
-// réel vers le daemon Ollama ferait échouer/expirer ces tests (timeout vitest
-// 5s << QA_OLLAMA_TIMEOUT_MS 25s). On simule "Ollama injoignable" en faisant
-// échouer fetch INSTANTANÉMENT — c'est le comportement RÉEL en cas d'indisponibilité,
-// qui déclenche la bascule immédiate vers le mock Claude ci-dessus.
-vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fetch mocked (test) : Ollama indisponible'))))
+// (#165) askLLM (llm.ts) tente Ollama AVANT Claude. Sans mock, l'appel réel au daemon
+// Ollama ferait expirer ces tests (timeout vitest 5s << QA_OLLAMA_TIMEOUT_MS). On simule
+// "Ollama injoignable" par un rejet INSTANTANÉ — le comportement RÉEL en cas
+// d'indisponibilité, qui déclenche la bascule immédiate vers le mock Claude ci-dessus.
+//
+// (2026-08-05) Ce mock visait `fetch` ; il visait donc le TRANSPORT, pas l'intention.
+// Quand askOllama est passé de `fetch` à `node:http` (pour échapper au plafond caché de
+// 300 s d'undici, cf. ollama-client.ts), le piège est devenu inopérant sans rien casser
+// de visible : les 18 tests partaient pour de bon sur le réseau. On mocke désormais la
+// FRONTIÈRE — le module cerveau — qui, elle, ne change pas quand le transport change.
+vi.mock('../../src/ollama-client.js', () => ({
+  askOllama: vi.fn(() => Promise.reject(new Error('mock (test) : Ollama indisponible'))),
+}))
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
@@ -231,8 +238,17 @@ describe('Branche ⚡ Performance', () => {
     expect(kept.map(f => f.path).sort()).toEqual(['src/List.jsx', 'src/hook.tsx', 'src/util.js'])
   })
 
-  it('relevant() retourne [] pour des fichiers non-React', () => {
-    expect(performance.relevant([file('a.ts'), file('b.css'), file('c.json')])).toEqual([])
+  // (2026-08-05) Test remis d'aplomb : il attendait encore l'exclusion de `.ts`, alors que
+  // la mesure J0 (cas PERF-03, eval/rapports/J0-2026-08-04-17-47-21.md) a DÉLIBÉRÉMENT
+  // ajouté `.ts` au filtre — sans quoi utils, hooks, stores et clients d'API n'étaient
+  // jamais audités. C'est le test qui était périmé, pas la branche.
+  it('relevant() retourne [] pour des fichiers sans code (styles, données, docs)', () => {
+    expect(performance.relevant([file('b.css'), file('c.json'), file('README.md')])).toEqual([])
+  })
+
+  it('relevant() retient les .ts non-composants (utils, logique) — cas PERF-03', () => {
+    const kept = performance.relevant([file('src/utils/format.ts'), file('a.css')])
+    expect(kept.map(f => f.path)).toEqual(['src/utils/format.ts'])
   })
 
   it('audit() LLM fail → BranchFinding.status = fail', async () => {

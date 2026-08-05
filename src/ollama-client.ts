@@ -12,6 +12,9 @@
 // harnais d'évaluation, script) doit pouvoir fixer `QA_OLLAMA_MODEL` avant le premier
 // usage réel. En ESM, les imports sont évalués AVANT le corps du module appelant : une
 // constante capturée ici ignorerait silencieusement toute configuration ultérieure.
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
+
 const ollamaUrl = (): string => process.env.OLLAMA_URL ?? 'http://localhost:11434'
 const defaultModel = (): string => process.env.QA_OLLAMA_MODEL ?? 'qwen3.5:cloud'
 
@@ -26,29 +29,83 @@ const defaultModel = (): string => process.env.QA_OLLAMA_MODEL ?? 'qwen3.5:cloud
 // appel qwen3.5:cloud CHAUD (mesuré : 9,3s) tout en laissant du temps au repli Claude.
 const defaultTimeoutMs = (): number => Number(process.env.QA_OLLAMA_TIMEOUT_MS ?? 25_000)
 
+// (2026-08-05) `fetch` ABANDONNÉ ici au profit de `node:http`.
+//
+// Undici (le fetch de Node) coupe la connexion au bout de 300 s si les EN-TÊTES ne sont
+// pas arrivés — `UND_ERR_HEADERS_TIMEOUT` — et avec `stream: false` Ollama n'envoie ses
+// en-têtes qu'une fois la réponse complète calculée. Ce plafond de 300 s est INVISIBLE
+// dans le code et non désactivable par le `signal`. Il a déjà coûté une soirée de
+// diagnostic sur la sonde plafond (cf. eval/rapports/PLAFOND-CONTEXTE.md), où il
+// imitait à s'y méprendre une coupure machine.
+//
+// Il était dormant tant que le cap de prompt valait 24 000 caractères. En le portant à
+// 100 000, on entre pile dans la zone où l'évaluation du prompt dure plus longtemps :
+// ~140 s mesurées pour 28 900 tokens sur qwen2.5-coder:14b, génération en plus. Le
+// laisser en place, c'est accepter que les gros audits échouent en `skip` fail-open —
+// c'est-à-dire disparaissent sans bruit, exactement le défaut qu'on est en train de
+// corriger, déplacé d'un cran.
+//
+// Avec `node:http`, le SEUL délai est le nôtre (`QA_OLLAMA_TIMEOUT_MS`), explicite et
+// déclaré. Le contrat de sortie est inchangé : on lève, et `askLLM` bascule au repli.
+function ollamaChat(body: unknown, timeoutMs: number): Promise<{ message?: { content?: string } }> {
+  const url = new URL(ollamaUrl())
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body)
+    const transport = url.protocol === 'https:' ? httpsRequest : httpRequest
+    const req = transport(
+      {
+        host: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: '/api/chat',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      },
+      res => {
+        let raw = ''
+        res.setEncoding('utf8')
+        res.on('data', c => {
+          raw += c
+        })
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 400) {
+            reject(new Error(`Ollama HTTP ${res.statusCode}`))
+            return
+          }
+          try {
+            resolve(JSON.parse(raw) as { message?: { content?: string } })
+          } catch {
+            reject(new Error(`Réponse Ollama illisible (HTTP ${res.statusCode})`))
+          }
+        })
+      },
+    )
+    // Notre délai, à nous — pas celui, caché, d'undici. `timeoutMs <= 0` = aucune limite
+    // (utile pour un harnais de mesure, où une lecture longue est légitime).
+    if (timeoutMs > 0) {
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error(`Ollama timeout après ${timeoutMs} ms`))
+      })
+    } else {
+      req.setTimeout(0)
+    }
+    req.on('error', reject)
+    req.end(payload)
+  })
+}
+
 export async function askOllama(system: string, user: string, timeoutMs = defaultTimeoutMs()): Promise<string> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(`${ollamaUrl()}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: defaultModel(),
-        stream: false,
-        options: { temperature: 0 },
-        keep_alive: '10m',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-      }),
-      signal: controller.signal,
-    })
-    if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`)
-    const data = (await res.json()) as { message?: { content?: string } }
-    return (data.message?.content ?? '').trim()
-  } finally {
-    clearTimeout(timer)
-  }
+  const data = await ollamaChat(
+    {
+      model: defaultModel(),
+      stream: false,
+      options: { temperature: 0 },
+      keep_alive: '10m',
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+    },
+    timeoutMs,
+  )
+  return (data.message?.content ?? '').trim()
 }

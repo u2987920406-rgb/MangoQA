@@ -1,0 +1,187 @@
+// Tests de la CLI (J3). Déterministe, zéro réseau, zéro LLM : on teste les parties
+// PURES — analyse des arguments, code de sortie, rendu du rapport. `main()` n'est pas
+// testée ici : elle n'ajoute que du câblage (console, process.env, fichier).
+//
+// Ce qui compte le plus dans ce fichier : les CODES DE SORTIE. C'est le seul contrat
+// qu'une CI consomme, et le seul qu'on ne peut pas changer sans casser des pipelines.
+import { describe, it, expect } from 'vitest'
+import { parseArgs, codeSortie, rendreRapport, EXIT, type CliOptions } from '../../src/cli.js'
+import type { AuditReport } from '../../src/audit.js'
+import type { AuditCoverage } from '../../src/types.js'
+
+const opts = (argv: string[]): CliOptions => {
+  const r = parseArgs(argv)
+  if ('aide' in r) throw new Error('aide inattendue')
+  return r
+}
+
+function couverture(rendus: number, total: number): AuditCoverage {
+  return {
+    filesTotal: total,
+    filesRendered: rendus,
+    omitted: Array.from({ length: total - rendus }, (_, i) => `omis${i}.ts`),
+    truncated: [],
+    sourceTruncated: [],
+    charsTotal: total * 1000,
+    charsRendered: rendus * 1000,
+    complete: rendus === total,
+  }
+}
+
+function rapport(over: Partial<AuditReport> = {}): AuditReport {
+  return {
+    projectName: 'projet',
+    projectDir: '/p',
+    verdict: { verdict: 'green', rejection: null, branches: {} },
+    branches: [],
+    filesScanned: 3,
+    coverage: { filesDiscovered: 3, filesRead: 3, filesDropped: [], filesTruncated: [], complete: true },
+    durationMs: 1234,
+    empty: false,
+    ...over,
+  }
+}
+
+describe('CLI — analyse des arguments', () => {
+  it('dossier seul : valeurs par défaut (concurrency 1, pas de JSON, pas de strict)', () => {
+    const o = opts(['./mon-projet'])
+    expect(o.dossier).toBe('./mon-projet')
+    expect(o.concurrency).toBe(1)
+    expect(o.json).toBe(false)
+    expect(o.exigerCouverture).toBe(false)
+  })
+
+  it('sans argument → aide (jamais une erreur : un utilisateur perdu n\'est pas en faute)', () => {
+    expect(parseArgs([])).toHaveProperty('aide')
+    expect(parseArgs(['--help'])).toHaveProperty('aide')
+  })
+
+  it('--only accepte des branches connues, REFUSE les inconnues en les nommant', () => {
+    expect(opts(['.', '--only', 'security,tests']).only).toEqual(['security', 'tests'])
+    expect(() => opts(['.', '--only', 'securite'])).toThrow(/securite/)
+  })
+
+  it('--json seul = stdout ; --json <fichier> = fichier', () => {
+    const sansFichier = opts(['.', '--json'])
+    expect(sansFichier.json).toBe(true)
+    expect(sansFichier.jsonFichier).toBeUndefined()
+    expect(opts(['.', '--json', 'r.json']).jsonFichier).toBe('r.json')
+  })
+
+  it('--json suivi d\'une AUTRE option ne l\'avale pas comme nom de fichier', () => {
+    const o = opts(['.', '--json', '--exiger-couverture'])
+    expect(o.jsonFichier).toBeUndefined()
+    expect(o.exigerCouverture).toBe(true)
+  })
+
+  it('valeurs numériques invalides refusées, pas silencieusement corrigées', () => {
+    expect(() => opts(['.', '--concurrency', '0'])).toThrow()
+    expect(() => opts(['.', '--concurrency', 'six'])).toThrow()
+    expect(() => opts(['.', '--cap', '-5'])).toThrow()
+  })
+
+  it('option inconnue et double dossier : erreurs explicites', () => {
+    expect(() => opts(['.', '--verbeux'])).toThrow(/--verbeux/)
+    expect(() => opts(['a', 'b'])).toThrow(/un seul dossier/i)
+  })
+
+  it('une option en fin de ligne sans sa valeur lève, au lieu de partir sur un défaut', () => {
+    expect(() => opts(['.', '--cap'])).toThrow(/--cap/)
+  })
+})
+
+describe('CLI — codes de sortie (contrat CI)', () => {
+  it('feu vert, couverture complète → 0', () => {
+    expect(codeSortie(rapport(), false)).toBe(EXIT.VERT)
+  })
+
+  it('feu rouge → 1, quelle que soit la couverture', () => {
+    const rouge = rapport({
+      verdict: {
+        verdict: 'red',
+        rejection: { rejection_id: 'x', corrective_action: 'y', rule_ref: 'z', branch: 'security', retry_count: 0 },
+        branches: {},
+      },
+    })
+    expect(codeSortie(rouge, false)).toBe(EXIT.ROUGE)
+    expect(codeSortie(rouge, true)).toBe(EXIT.ROUGE)
+  })
+
+  it('feu vert sur lecture PARTIELLE → 0 par défaut (déclaré, pas bloquant)', () => {
+    const partiel = rapport({
+      coverage: { filesDiscovered: 19, filesRead: 19, filesDropped: [], filesTruncated: [], complete: false },
+    })
+    expect(codeSortie(partiel, false)).toBe(EXIT.VERT)
+  })
+
+  it('… mais → 3 avec --exiger-couverture : « rien vu » n\'est pas « rien à signaler »', () => {
+    const partiel = rapport({
+      coverage: { filesDiscovered: 19, filesRead: 19, filesDropped: [], filesTruncated: [], complete: false },
+    })
+    expect(codeSortie(partiel, true)).toBe(EXIT.PARTIEL)
+    // Le code PARTIEL doit rester DISTINCT du rouge : aucun défaut n'a été trouvé.
+    expect(EXIT.PARTIEL).not.toBe(EXIT.ROUGE)
+  })
+})
+
+describe('CLI — rendu du rapport', () => {
+  const brancheOver = (cov: AuditCoverage | undefined) => ({
+    id: 'performance',
+    label: 'Performance',
+    emoji: '⚡',
+    blocking: true,
+    finding: { status: 'pass' as const, summary: 'RAS' },
+    filesAudited: cov?.filesTotal ?? 0,
+    ...(cov ? { coverage: cov } : {}),
+    durationMs: 5000,
+  })
+
+  it('couverture complète : une seule ligne, sans alarme inutile', () => {
+    const txt = rendreRapport(rapport({ branches: [brancheOver(couverture(19, 19))] }))
+    expect(txt).toContain('COUVERTURE : complète')
+    expect(txt).not.toContain('⚠️')
+    expect(txt).toContain('🟢 FEU VERT')
+  })
+
+  it('couverture partielle : la réserve est SUR la ligne de verdict, pas en bas de page', () => {
+    const txt = rendreRapport(
+      rapport({
+        branches: [brancheOver(couverture(5, 19))],
+        coverage: { filesDiscovered: 20, filesRead: 19, filesDropped: ['x.ts'], filesTruncated: [], complete: false },
+      }),
+    )
+    const ligneVerdict = txt.split('\n').find(l => l.includes('FEU VERT'))!
+    expect(ligneVerdict).toContain('SUR LECTURE PARTIELLE')
+    // Les fichiers non vus sont NOMMÉS, pas seulement comptés.
+    expect(txt).toContain('5/19 fichiers envoyés au modèle')
+    expect(txt).toContain('non vus :')
+    expect(txt).toContain('Jamais lus : x.ts')
+  })
+
+  it('dossier vide : le dit, sans inventer un verdict rassurant', () => {
+    const txt = rendreRapport(rapport({ empty: true, branches: [], filesScanned: 0 }))
+    expect(txt).toContain('Aucun fichier auditable')
+    expect(txt).not.toContain('FEU VERT')
+  })
+
+  it('feu rouge : correctif et règle affichés (c\'est ce que l\'utilisateur va appliquer)', () => {
+    const txt = rendreRapport(
+      rapport({
+        verdict: {
+          verdict: 'red',
+          rejection: {
+            rejection_id: 'missing-key',
+            corrective_action: 'Ajouter une clé stable',
+            rule_ref: 'react-keys',
+            branch: 'performance',
+            retry_count: 0,
+          },
+          branches: {},
+        },
+      }),
+    )
+    expect(txt).toContain('🔴 FEU ROUGE — branche performance (missing-key)')
+    expect(txt).toContain('Ajouter une clé stable')
+    expect(txt).toContain('react-keys')
+  })
+})

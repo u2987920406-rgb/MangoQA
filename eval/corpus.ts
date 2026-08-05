@@ -21,6 +21,7 @@
 // exécution reproductible.
 
 import type { ProjectFile } from '../src/types.js'
+import { LONG } from './corpus-long.js'
 
 /** Les 6 branches notables (ids réels de src/branches/*.ts). */
 export type BranchId =
@@ -860,10 +861,24 @@ export const CORPUS: EvalCase[] = [
   ...TESTS,
   ...DESIGN_SYSTEM,
   ...CLEAN,
+  // (2026-08-05) Fichiers LONGS et réalistes — le chaînon manquant de J0, qui ne
+  // mesurait que des défauts ISOLÉS dans des fichiers de 12 à 40 lignes. Voir
+  // l'en-tête de corpus-long.ts : le premier contact avec du vrai code a produit
+  // un faux positif que ce corpus-ci ne pouvait pas voir venir.
+  ...LONG,
 ]
 
-/** Répartition du corpus, pour l'en-tête du rapport. */
+/** Répartition du corpus, pour l'en-tête du rapport.
+ *
+ *  Un cas est « propre » quand AUCUN défaut n'y a été injecté — ce que déclare son
+ *  champ `defect` (« RIEN — … »). Le préfixe `CLEAN-` ne suffit plus depuis que la
+ *  famille LONG apporte ses propres contrôles négatifs (LONG-01, LONG-04).
+ *
+ *  Écarté au passage : compter les cas « sans `fail` attendu ». Ce raccourci classerait
+ *  DS-01 et DS-02 comme du code propre alors qu'ils portent un vrai défaut — la branche
+ *  design-system est de CONSEIL, elle ne peut simplement jamais répondre `fail`. Le
+ *  taux de faux positifs s'en trouverait dilué, dans le sens flatteur. */
 export function corpusSummary(): { total: number; defauts: number; propres: number } {
-  const propres = CORPUS.filter((c) => c.id.startsWith('CLEAN-')).length
+  const propres = CORPUS.filter((c) => c.defect.startsWith('RIEN')).length
   return { total: CORPUS.length, defauts: CORPUS.length - propres, propres }
 }

@@ -32,9 +32,9 @@ manqué parce que le filtre n'a pas retenu le fichier est un bug déterministe, 
 une ligne. Un défaut manqué alors que la branche l'a bien lu est un problème de prompt ou de
 modèle. Les confondre mène à changer de modèle quand il fallait changer une regex.
 
-## Le corpus (`corpus.ts`)
+## Le corpus (`corpus.ts` + `corpus-long.ts`)
 
-**23 cas**, tous en mémoire (`ProjectFile[]`) — aucun fichier temporaire, aucun nettoyage,
+**27 cas**, tous en mémoire (`ProjectFile[]`) — aucun fichier temporaire, aucun nettoyage,
 exécution reproductible.
 
 | Famille | Cas | Contenu |
@@ -46,6 +46,27 @@ exécution reproductible.
 | 🧪 Tests | 2 | logique métier non testée + **contrôle positif** (même logique, testée) |
 | 🎨 Design system | 2 | couleurs hors palette · espacements arbitraires |
 | ✅ **Contrôles propres** | **4** | **aucun défaut** — mesurent les faux positifs |
+| 📏 **Fichiers longs** | **4** | 2 fautifs + 2 propres, **appariés** — `corpus-long.ts` |
+
+### 📏 La famille « fichiers longs » (2026-08-05)
+
+Les 23 cas d'origine mesurent la capacité à juger un défaut **isolé**, dans un fichier de
+12 à 40 lignes. Ils donnaient `0/45 faux positifs`. Le premier contact avec du vrai code en
+a produit un immédiatement : sur un composant de 334 lignes, la branche Performance a exigé
+d'ajouter une clé `key={c.id}` **qui était déjà là ligne 308**, avec le fichier intégralement
+présent dans le prompt (cf. `rapports/J1-DETACHER.md`, défaut n°1).
+
+> **Le score J0 reste vrai — il ne mesurait simplement pas ce qu'on croyait.**
+
+Ces 4 cas comblent le trou. Trois règles de construction leur sont propres :
+
+- **Appariement.** Chaque fautif a un jumeau propre de longueur et de forme comparables
+  (`LONG-01` ↔ `LONG-02` : le même fichier de 237 lignes, à une clé près). Sans le jumeau, on
+  ne distingue pas « détecte » de « crie au loup dès que le fichier est long ».
+- **Enfouissement.** Le défaut est dans le dernier tiers, jamais en tête.
+- **Voisinage trompeur.** Le fichier propre contient délibérément des constructions qui
+  ressemblent au défaut cherché — des `.map()` en série, du HTML injecté mais assaini. C'est
+  là que naissent les hallucinations, pas sur du code neutre.
 
 Les défauts choisis sont ceux que les générateurs IA produisent **réellement**, pas des cas
 d'école. Chaque cas porte : le défaut, son emplacement, la règle de référence (OWASP/WCAG),
@@ -62,11 +83,29 @@ sont la moitié de la mesure.
 npx tsx eval/run-eval.ts                          # tout le corpus, 1 passe
 npx tsx eval/run-eval.ts --only security          # une seule branche
 npx tsx eval/run-eval.ts --case SEC-01            # un cas (préfixe accepté)
+npx tsx eval/run-eval.ts --case LONG              # toute la famille « fichiers longs »
 npx tsx eval/run-eval.ts --repeat 3               # 3 passes → mesure la variabilité
 npx tsx eval/run-eval.ts --json rapport.json      # sortie machine en plus du tableau
 ```
 
 Les rapports datés sont écrits dans `eval/rapports/`.
+
+### Auditer un VRAI projet (`audit-projet.ts`)
+
+Le corpus mesure le jugement sur des cas étiquetés. Ce harnais-ci fait l'inverse : il lance
+l'audit complet sur un dossier réel et imprime le rapport, **couverture comprise**.
+
+```bash
+npx tsx eval/audit-projet.ts D:/IA/MangoOS/workspace/abyss
+npx tsx eval/audit-projet.ts ./mon-projet --cap 24000     # forcer un autre cap de prompt
+npx tsx eval/audit-projet.ts ./mon-projet --only performance,tests
+npx tsx eval/audit-projet.ts ./mon-projet --journal eval/rapports/MON-AUDIT.md
+```
+
+Il existe parce que le run J1 sur `abyss` — celui qui a révélé les deux défauts du produit —
+avait été fait dans un script jeté après usage : la mesure n'était pas rejouable. C'est aussi
+le brouillon de la CLI de J3, avec la règle d'affichage qui compte : **la couverture s'imprime
+avec le verdict, jamais en note de bas de page.**
 
 ## Ce que le harnais ne fait PAS
 

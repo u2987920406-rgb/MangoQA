@@ -14,7 +14,7 @@
 // une extraction, pas un changement de comportement.
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ProjectFile } from './types.js'
+import type { AuditCoverage, ProjectFile } from './types.js'
 
 // ── atomicWriteFileSync : écriture jamais lue à moitié écrite ─────────────────
 
@@ -37,25 +37,78 @@ export function atomicWriteFileSync(file: string, data: string): void {
 
 // ── renderFiles : payload de prompt borné ────────────────────────────────────
 
-/** Concatène des fichiers en un payload de prompt borné à `cap` caractères. Au
- *  premier fichier qui ferait déborder le cap, tronque son contenu (si la place
- *  restante dépasse 200 caractères) et s'arrête — comportement identique à
- *  l'ancien `renderFiles` de llm.ts / flux-eye/deep.ts. `truncatedLabel` diffère
- *  entre visages (llm.ts : « …(tronqué)… » avec accent ; flux-eye/deep.ts :
- *  « …(tronque)… » sans accent, par convention du fichier) — préservé via
- *  paramètre plutôt que codé en dur. */
-export function renderFiles(files: ProjectFile[], cap: number, truncatedLabel = '…(tronqué)…'): string {
+/** Concatène des fichiers en un payload de prompt borné à `cap` caractères, ET
+ *  rend la couverture correspondante. Au premier fichier qui ferait déborder le
+ *  cap, tronque son contenu (si la place restante dépasse 200 caractères) et
+ *  s'arrête — comportement identique à l'ancien `renderFiles` de llm.ts /
+ *  flux-eye/deep.ts. `truncatedLabel` diffère entre visages (llm.ts :
+ *  « …(tronqué)… » avec accent ; flux-eye/deep.ts : « …(tronque)… » sans accent,
+ *  par convention du fichier) — préservé via paramètre plutôt que codé en dur. */
+export function renderFilesWithCoverage(
+  files: ProjectFile[],
+  cap: number,
+  truncatedLabel = '…(tronqué)…',
+): { text: string; coverage: AuditCoverage } {
   let out = ''
+  let charsRendered = 0
+  let filesRendered = 0
+  const truncated: string[] = []
+  const sourceTruncated: string[] = []
+  const omitted: string[] = []
+  let stopped = false
+
   for (const f of files) {
+    if (stopped) {
+      omitted.push(f.path)
+      continue
+    }
     const header = `\n----- ${f.path} -----\n`
     if (out.length + header.length + f.content.length > cap) {
       const room = Math.max(0, cap - out.length - header.length)
-      if (room > 200) out += header + f.content.slice(0, room) + `\n${truncatedLabel}\n`
-      break
+      if (room > 200) {
+        out += header + f.content.slice(0, room) + `\n${truncatedLabel}\n`
+        charsRendered += room
+        filesRendered++
+        truncated.push(f.path)
+      } else {
+        // Pas même la place d'un fragment utile : le fichier est purement absent.
+        omitted.push(f.path)
+      }
+      // Comportement historique : on s'arrête au premier débordement. Les fichiers
+      // suivants ne sont pas envoyés — on continue la boucle uniquement pour les
+      // COMPTER (c'est tout l'objet de cette fonction).
+      stopped = true
+      continue
     }
     out += header + f.content
+    charsRendered += f.content.length
+    filesRendered++
+    // Coupé DÈS LA LECTURE disque (MAX_FILE_CHARS) : le fichier est bien dans le
+    // prompt, mais amputé. On ne le note QUE s'il a été envoyé — dire d'un fichier
+    // jamais fourni qu'il a été « fourni mais coupé » serait une fausse précision.
+    if (f.truncated) sourceTruncated.push(f.path)
   }
-  return out
+
+  const charsTotal = files.reduce((n, f) => n + (f.fullChars ?? f.content.length), 0)
+  return {
+    text: out,
+    coverage: {
+      filesTotal: files.length,
+      filesRendered,
+      omitted,
+      truncated,
+      sourceTruncated,
+      charsTotal,
+      charsRendered,
+      complete: omitted.length === 0 && truncated.length === 0 && sourceTruncated.length === 0,
+    },
+  }
+}
+
+/** Variante « texte seul » — signature et sortie strictement inchangées depuis #R3
+ *  (les appelants qui n'ont pas besoin de la couverture ne changent pas). */
+export function renderFiles(files: ProjectFile[], cap: number, truncatedLabel = '…(tronqué)…'): string {
+  return renderFilesWithCoverage(files, cap, truncatedLabel).text
 }
 
 // ── walkTree : parcours récursif borné, extension/dossiers paramétrés ───────

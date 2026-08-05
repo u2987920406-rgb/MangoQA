@@ -3,7 +3,7 @@
 // bloquante en échec → rejet déterministe. Branches non-bloquantes = conseil.
 import { describe, it, expect } from 'vitest'
 import { buildVerdict, type BranchResult } from '../../src/verdict.js'
-import type { Branch, BranchFinding } from '../../src/types.js'
+import type { AuditCoverage, Branch, BranchFinding } from '../../src/types.js'
 
 /** Branche bloquante factice. */
 function blocking(id: string, finding: BranchFinding): BranchResult {
@@ -109,5 +109,57 @@ describe('buildVerdict', () => {
     expect(v.rejection!.rejection_id).toBe('security-anomalie')
     expect(v.rejection!.corrective_action).toBe('fail summary')
     expect(v.rejection!.rule_ref).toBe('security')
+  })
+
+  // ── Couverture (J1 défaut n°2 — l'audit partiel silencieux) ────────────────
+  // « Un auditeur a le droit de ne pas tout lire ; il n'a pas le droit de le taire. »
+  describe('couverture déclarée', () => {
+    const cov = (filesRendered: number, filesTotal: number): AuditCoverage => ({
+      filesTotal,
+      filesRendered,
+      omitted: Array.from({ length: filesTotal - filesRendered }, (_, i) => `omis${i}.ts`),
+      truncated: [],
+      sourceTruncated: [],
+      charsTotal: filesTotal * 1000,
+      charsRendered: filesRendered * 1000,
+      complete: filesRendered === filesTotal,
+    })
+
+    it('lecture partielle → verdict.coverage.partial nomme la branche et son ratio', () => {
+      const results: BranchResult[] = [
+        blocking('architecture', { ...pass('arch ok'), coverage: cov(5, 19) }),
+        blocking('security', { ...pass('sec ok'), coverage: cov(4, 4) }),
+      ]
+      const v = buildVerdict(results, 0)
+      expect(v.coverage!.complete).toBe(false)
+      expect(v.coverage!.partial).toEqual([{ branch: 'architecture', filesRendered: 5, filesTotal: 19 }])
+    })
+
+    it('le Feu Vert partiel le DIT aussi en clair dans le résumé de branche', () => {
+      const results: BranchResult[] = [blocking('architecture', { ...pass('arch ok'), coverage: cov(5, 19) })]
+      const v = buildVerdict(results, 0)
+      expect(v.verdict).toBe('green')
+      expect(v.branches['architecture'].summary).toBe('arch ok [lecture partielle : 5/19 fichiers audités]')
+    })
+
+    it('couverture complète → aucune mention parasite, summary intact', () => {
+      const results: BranchResult[] = [blocking('architecture', { ...pass('arch ok'), coverage: cov(19, 19) })]
+      const v = buildVerdict(results, 0)
+      expect(v.coverage).toEqual({ complete: true, partial: [] })
+      expect(v.branches['architecture'].summary).toBe('arch ok')
+    })
+
+    it('AUCUNE branche mesurée → coverage ABSENT, jamais complete:true (non mesuré ≠ tout lu)', () => {
+      const v = buildVerdict([blocking('architecture', pass('arch ok'))], 0)
+      expect(v.coverage).toBeUndefined()
+    })
+
+    it('un Feu Rouge partiel porte aussi sa couverture (le rejet reste inchangé)', () => {
+      const results: BranchResult[] = [blocking('security', { ...fail('faille XSS'), coverage: cov(2, 9) })]
+      const v = buildVerdict(results, 0)
+      expect(v.verdict).toBe('red')
+      expect(v.rejection!.branch).toBe('security')
+      expect(v.coverage!.partial).toEqual([{ branch: 'security', filesRendered: 2, filesTotal: 9 }])
+    })
   })
 })

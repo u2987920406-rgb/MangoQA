@@ -94,12 +94,30 @@ export function walkSrc(dir: string, base: string, acc: string[], fsx: FsLike = 
   })
 }
 
+/** Sonde de couverture de LECTURE, remplie par `readProjectFiles` si on la lui passe
+ *  (J1 défaut n°2). Deuxième étage de perte, avant même le cap de prompt : le projet
+ *  peut avoir plus de `MAX_FILES` fichiers, et les non-élus disparaissaient sans trace.
+ *  Paramètre optionnel = zéro impact sur les appelants existants. */
+export interface ReadStats {
+  /** Candidats découverts (après filtre d'extension/dossiers, avant la coupe MAX_FILES). */
+  discovered: number
+  /** Fichiers réellement lus et transmis aux branches. */
+  read: number
+  /** Chemins découverts mais jamais lus (coupés par MAX_FILES, ou illisibles). */
+  dropped: string[]
+}
+
 /** #10 — la troncature à MAX_FILES n'est plus "premier arrivé, premier servi" :
  *  on trie d'abord TOUS les candidats découverts (jusqu'à DISCOVERY_CAP) par
  *  `priorityScore` (points d'entrée HTTP, auth, secrets/config, bootstrap serveur
  *  en tête), puis on ne lit le contenu que des MAX_FILES élus. S'applique aussi
  *  au delta `changedFiles` quand il dépasse MAX_FILES. */
-export function readProjectFiles(projDir: string, changedFiles: string[], fsx: FsLike = realFs): ProjectFile[] {
+export function readProjectFiles(
+  projDir: string,
+  changedFiles: string[],
+  fsx: FsLike = realFs,
+  stats?: ReadStats,
+): ProjectFile[] {
   let rel: string[]
   if (changedFiles && changedFiles.length > 0) {
     rel = changedFiles.filter(f => !f.split(/[\\/]/).some(seg => SKIP_DIRS.has(seg)))
@@ -115,12 +133,23 @@ export function readProjectFiles(projDir: string, changedFiles: string[], fsx: F
     try {
       if (!fsx.existsSync(abs) || !fsx.isFile(abs)) continue
       let content = fsx.readFileSync(abs)
-      if (content.length > MAX_FILE_CHARS) content = content.slice(0, MAX_FILE_CHARS) + '\n…(tronqué)…'
-      out.push({ path: r.replace(/\\/g, '/'), content })
+      // (2026-08-05) Taille RÉELLE conservée avant la coupe : sans elle, la couverture
+      // se calculerait sur ce qu'on a bien voulu lire — un dénominateur complaisant.
+      const fullChars = content.length
+      const truncated = fullChars > MAX_FILE_CHARS
+      if (truncated) content = content.slice(0, MAX_FILE_CHARS) + '\n…(tronqué)…'
+      out.push({ path: r.replace(/\\/g, '/'), content, fullChars, ...(truncated ? { truncated } : {}) })
     } catch (err) {
       /* fichier illisible ignoré */
       console.warn('[mango-qa] orchestrateur:', (err as Error)?.message ?? err)
     }
+  }
+  if (stats) {
+    const readSet = new Set(out.map(f => f.path))
+    stats.discovered = prioritized.length
+    stats.read = out.length
+    // Découverts mais jamais lus : coupés par MAX_FILES, ou illisibles/disparus.
+    stats.dropped = prioritized.map(p => p.replace(/\\/g, '/')).filter(p => !readSet.has(p))
   }
   return out
 }

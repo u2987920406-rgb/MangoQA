@@ -12,15 +12,28 @@
 // POSTURE : conseil, JAMAIS bloquant (`blocking: false`). Fail-open partout.
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ProjectFile, PhaseSignal } from '../types.js'
+import type { AuditCoverage, ProjectFile, PhaseSignal } from '../types.js'
 import type { NavGraph } from './graph.js'
 import type { FluxObservation } from './eye.js'
-import { askLLM, parseFirstJson } from '../llm.js'
+import { askLLM, coverageBlock, parseFirstJson } from '../llm.js'
 import { readJsonlTail } from '../jsonl.js'
-import { renderFiles } from '../fs-shared.js'
+import { renderFilesWithCoverage } from '../fs-shared.js'
 
 export const DEEP_OBSERVATIONS_FILE = 'flux-deep-observations.json'
-const FILE_PAYLOAD_CAP = 20_000
+
+/** Plafond de code injecté dans le prompt de l'Auditeur de Flux, en caractères.
+ *
+ *  (2026-08-05, faille J2-b) DÉLIBÉRÉMENT laissé à 20 000, alors que les 6 branches
+ *  sont passées à 100 000. Ce visage-ci n'a jamais été mesuré contre un corpus : le
+ *  relever changerait son comportement sans donnée pour dire si c'est en mieux. La
+ *  discipline de J2 vaut ici aussi — on DÉCLARE d'abord, on relève ensuite, et
+ *  seulement sur mesure. Réglable par `FLUX_DEEP_PAYLOAD_CAP` pour que ce relèvement
+ *  soit un geste explicite le jour où il sera fondé. */
+export const DEFAULT_FLUX_PAYLOAD_CAP = 20_000
+function fluxPayloadCap(): number {
+  const raw = parseInt((process.env.FLUX_DEEP_PAYLOAD_CAP ?? '').trim(), 10)
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_FLUX_PAYLOAD_CAP
+}
 
 function envInt(name: string, def: number): number {
   const v = parseInt(process.env[name] ?? '', 10)
@@ -105,6 +118,11 @@ export interface FluxDeepObservation {
   model: string
   findings: DeepFinding[]
   summary: string
+  /** Ce que le modèle a RÉELLEMENT lu (faille J2-b). Écrite telle quelle dans
+   *  `flux-deep-observations.json` : un lecteur de ce fichier doit pouvoir savoir si
+   *  « flux cohérent » porte sur tout le code ou sur un cinquième. `undefined` quand
+   *  aucun rendu n'a eu lieu (audit non exécuté). */
+  coverage?: AuditCoverage
 }
 
 export interface DeepAuditDeps {
@@ -141,6 +159,18 @@ export async function auditFluxDeep(
   const model = deps.model ?? process.env.FLUX_DEEP_MODEL ?? process.env.QA_MODEL ?? 'sonnet'
   const ask = deps.askLLM ?? askLLM
 
+  const { text: payload, coverage } = renderFilesWithCoverage(files, fluxPayloadCap(), '…(tronque)…')
+
+  // Le risque de conclure par absence est PLUS fort ici que sur les 6 branches : « cette
+  // surface est inatteignable », « aucune entree ne mene la » sont exactement des jugements
+  // d'absence. Mais le GRAPHE, lui, vient d'une analyse statique menee hors de ce payload —
+  // il reste complet meme quand le code est plafonne. On dit donc les deux au modele : ce
+  // qu'il ne voit pas, et ce a quoi il peut se fier malgre tout.
+  const couverture = coverageBlock(coverage, {
+    consigne: 'Ne signale une observation que sur ce qui est VISIBLE dans les fichiers ci-dessous ou dans le graphe.',
+    signalDeterministe: 'GRAPHE DE NAVIGATION / FAIT DU TIER 0',
+  })
+
   const user = `Projet : ${signal.projectName} — phase ${signal.phase}.
 
 GRAPHE DE NAVIGATION (extrait deterministe du Tier 0) :
@@ -148,16 +178,16 @@ ${graphSummary(graph)}
 
 FAITS DU TIER 0 :
 - mesure (durs) : ${tier0.summary}
-- questions de convergence : ${tier0.convergence.length ? tier0.convergence.join(' | ') : '—'}
+- questions de convergence : ${tier0.convergence.length ? tier0.convergence.join(' | ') : '—'}${couverture}
 
 CODE PERTINENT :
-${renderFiles(files, FILE_PAYLOAD_CAP, '…(tronque)…')}`
+${payload}`
 
   try {
     const raw = await ask(DEEP_SYSTEM, user)
     const parsed = parseFirstJson<{ findings?: unknown[]; summary?: string }>(raw)
     if (!parsed) {
-      return { blocking: false, ran: false, reason: 'reponse illisible', model, findings: [], summary: 'Audit profond ignore (reponse illisible).' }
+      return { blocking: false, ran: false, reason: 'reponse illisible', model, findings: [], summary: 'Audit profond ignore (reponse illisible).', coverage }
     }
     const findings: DeepFinding[] = (Array.isArray(parsed.findings) ? parsed.findings : [])
       .map(raw => raw as Record<string, unknown>)
@@ -170,9 +200,16 @@ ${renderFiles(files, FILE_PAYLOAD_CAP, '…(tronque)…')}`
         if (surfaces && surfaces.length) finding.surfaces = surfaces
         return finding
       })
-    const summary = (parsed.summary ?? '').trim() ||
+    // « Flux coherent » sur une lecture partielle n'est PAS « flux coherent ». La reserve
+    // est recopiee dans le texte du resume, pas seulement dans le champ structure — meme
+    // regle que buildVerdict : aucun affichage existant ne doit pouvoir presenter un audit
+    // partiel comme complet sans avoir ete mis a jour.
+    const base = (parsed.summary ?? '').trim() ||
       (findings.length ? `${findings.length} observation(s) de flux.` : 'Flux coherent (audit profond).')
-    return { blocking: false, ran: true, reason: 'audit effectue', model, findings, summary }
+    const summary = coverage.complete
+      ? base
+      : `${base} [lecture partielle : ${coverage.filesRendered}/${coverage.filesTotal} fichiers lus]`
+    return { blocking: false, ran: true, reason: 'audit effectue', model, findings, summary, coverage }
   } catch (err) {
     return {
       blocking: false,
@@ -181,6 +218,7 @@ ${renderFiles(files, FILE_PAYLOAD_CAP, '…(tronque)…')}`
       model,
       findings: [],
       summary: 'Audit profond ignore (fail-open).',
+      coverage,
     }
   }
 }
