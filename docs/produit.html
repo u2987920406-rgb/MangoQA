@@ -1,0 +1,585 @@
+<!--
+  Maquette de page produit — Mango QA. Écrite le 2026-08-05.
+  Page autonome : aucune police, aucun script, aucune image externe. S'ouvre hors
+  ligne et suit le thème clair/sombre du système.
+
+  ⚠️ CETTE PAGE CITE DES CHIFFRES MESURÉS. Ils ont une date et ils vieilliront.
+  Avant toute republication, revérifier chaque nombre contre sa source :
+
+    tableau du corpus long ...... eval/rapports/J2-COUVERTURE.md (§ Mesure finale)
+    32 cas / 9 cas longs ........ eval/corpus.ts + eval/corpus-long.ts
+    sortie du terminal (héros) .. eval/rapports/J2-RUNS-abyss.md (run au cap 100 000)
+    codes de sortie 0/1/2/3 ..... src/cli.ts (constante EXIT)
+    1,6 Mo installés ............ npm pack + install dans un dossier vierge
+
+  La section « Ce que cette mesure n'établit pas » n'est pas une modestie d'usage :
+  c'est la condition de crédibilité de tout le reste. Un produit qui demande de ne
+  pas croire les logiciels sur parole ne peut pas demander qu'on le croie sur
+  parole. La mettre à jour, oui ; la retirer, jamais.
+-->
+<title>Mango QA — l'auditeur qui dit ce qu'il n'a pas lu</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Jetons. Neutres biaisés ardoise (froid, registre d'audit) —
+     pas de crème. Ocre = accent unique, lampe témoin plutôt que
+     fruit. Vert/rouge sont SÉMANTIQUES : réservés aux verdicts,
+     jamais décoratifs.
+     ───────────────────────────────────────────────────────────── */
+  :root {
+    --encre:      #10151b;
+    --encre-2:    #2c3742;
+    --encre-3:    #5a6773;
+    --papier:     #f3f5f7;
+    --papier-2:   #e5e9ed;
+    --papier-3:   #d3dae0;
+    --ocre:       #b4761f;
+    --ocre-vif:   #d4901f;
+    --vert:       #1f6b4d;
+    --rouge:      #a83a2a;
+    --fond:       var(--papier);
+    --fond-creux: #eaeef1;
+    --fond-carte: #ffffff;
+    --texte:      var(--encre);
+    --texte-2:    var(--encre-2);
+    --texte-3:    var(--encre-3);
+    --trait:      var(--papier-3);
+    --trait-fin:  var(--papier-2);
+    --accent:     var(--ocre);
+    --term-fond:  #10151b;
+    --term-texte: #cdd6de;
+    --term-faible:#6b7883;
+
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --l:  min(70rem, 100% - 2.5rem);
+    --lt: min(42rem, 100% - 2.5rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fond:       #0d1218;
+      --fond-creux: #121922;
+      --fond-carte: #151d26;
+      --texte:      #dfe6ec;
+      --texte-2:    #a9b5c0;
+      --texte-3:    #7a8794;
+      --trait:      #26313d;
+      --trait-fin:  #1c2530;
+      --accent:     var(--ocre-vif);
+      --vert:       #3d9a72;
+      --rouge:      #d1584a;
+      --term-fond:  #080c11;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fond:       #0d1218;
+    --fond-creux: #121922;
+    --fond-carte: #151d26;
+    --texte:      #dfe6ec;
+    --texte-2:    #a9b5c0;
+    --texte-3:    #7a8794;
+    --trait:      #26313d;
+    --trait-fin:  #1c2530;
+    --accent:     var(--ocre-vif);
+    --vert:       #3d9a72;
+    --rouge:      #d1584a;
+    --term-fond:  #080c11;
+  }
+  :root[data-theme="light"] {
+    --fond:       var(--papier);
+    --fond-creux: #eaeef1;
+    --fond-carte: #ffffff;
+    --texte:      var(--encre);
+    --texte-2:    var(--encre-2);
+    --texte-3:    var(--encre-3);
+    --trait:      var(--papier-3);
+    --trait-fin:  var(--papier-2);
+    --accent:     var(--ocre);
+    --vert:       #1f6b4d;
+    --rouge:      #a83a2a;
+    --term-fond:  #10151b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--fond);
+    color: var(--texte);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Le mono en display : le produit EST une sortie de terminal. */
+  h1, h2, h3, .eyebrow, .chiffre {
+    font-family: var(--mono);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  h1 { font-size: clamp(2.1rem, 5.4vw, 3.4rem); line-height: 1.08; margin: 0; }
+  h2 { font-size: clamp(1.35rem, 2.9vw, 1.85rem); line-height: 1.2; margin: 0; }
+  h3 { font-size: 1.02rem; line-height: 1.35; margin: 0; letter-spacing: -0.01em; }
+
+  p { margin: 0; }
+  a { color: inherit; }
+
+  .eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .enveloppe { width: var(--l); margin-inline: auto; }
+  .texte     { width: var(--lt); margin-inline: auto; }
+
+  section { padding-block: clamp(3.5rem, 8vw, 6rem); }
+  .creux  { background: var(--fond-creux); border-block: 1px solid var(--trait-fin); }
+
+  .pile      { display: flex; flex-direction: column; gap: 1.1rem; }
+  .pile-large{ display: flex; flex-direction: column; gap: 2.6rem; }
+  .pile-serre{ display: flex; flex-direction: column; gap: 0.55rem; }
+
+  /* ── En-tête ────────────────────────────────────────────── */
+  header { padding-block: 1.6rem; border-bottom: 1px solid var(--trait-fin); }
+  .marque {
+    display: flex; align-items: baseline; gap: 0.6rem;
+    font-family: var(--mono); font-weight: 700; letter-spacing: -0.03em;
+  }
+  .marque b { font-size: 1.08rem; }
+  .marque span { font-size: 0.72rem; color: var(--texte-3); font-weight: 500; letter-spacing: 0.04em; }
+
+  /* ── Héros ──────────────────────────────────────────────── */
+  .heros { padding-top: clamp(3rem, 7vw, 5rem); }
+  .heros-grille {
+    display: grid; gap: clamp(2.2rem, 4vw, 3.4rem);
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  @media (min-width: 62rem) {
+    .heros-grille { grid-template-columns: 1.02fr 1fr; align-items: center; }
+  }
+  .accroche { font-size: 1.16rem; color: var(--texte-2); max-width: 34rem; }
+  .accroche strong { color: var(--texte); font-weight: 600; }
+
+  /* ── Terminal : la thèse du produit ─────────────────────── */
+  .term {
+    background: var(--term-fond);
+    color: var(--term-texte);
+    border-radius: 6px;
+    border: 1px solid var(--trait);
+    font-family: var(--mono);
+    font-size: clamp(0.7rem, 1.55vw, 0.82rem);
+    line-height: 1.75;
+    overflow-x: auto;
+    box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.75);
+  }
+  .term-barre {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    color: var(--term-faible);
+    font-size: 0.68rem; letter-spacing: 0.05em;
+  }
+  .pastille { width: 8px; height: 8px; border-radius: 50%; background: #3a444e; flex: none; }
+  .term-corps { padding: 0.9rem 1.05rem 1.15rem; }
+  .term-corps > div { white-space: pre; }
+  .l-faible { color: var(--term-faible); }
+  .l-vert   { color: #4fb98a; }
+  .l-rouge  { color: #e07a68; }
+  .l-alerte { color: #e0a63f; }
+  .l-fort   { color: #fff; font-weight: 600; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .term-corps > div { opacity: 0; animation: ligne 0.34s ease-out forwards; }
+    .term-corps > div:nth-child(1) { animation-delay: 0.10s; }
+    .term-corps > div:nth-child(2) { animation-delay: 0.42s; }
+    .term-corps > div:nth-child(3) { animation-delay: 0.70s; }
+    .term-corps > div:nth-child(4) { animation-delay: 0.98s; }
+    .term-corps > div:nth-child(5) { animation-delay: 1.24s; }
+    .term-corps > div:nth-child(6) { animation-delay: 1.50s; }
+    .term-corps > div:nth-child(7) { animation-delay: 1.74s; }
+    .term-corps > div:nth-child(8) { animation-delay: 1.90s; }
+    .term-corps > div:nth-child(9) { animation-delay: 2.06s; }
+    .term-corps > div:nth-child(10){ animation-delay: 2.30s; }
+    .term-corps > div:nth-child(11){ animation-delay: 2.46s; }
+    .term-corps > div:nth-child(12){ animation-delay: 2.62s; }
+  }
+  @keyframes ligne { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+  /* ── Motif structurant : la barre de couverture ─────────── */
+  .couv { display: flex; align-items: center; gap: 0.6rem; }
+  .couv-piste {
+    flex: 1; height: 5px; border-radius: 3px;
+    background: var(--trait); overflow: hidden; min-width: 3rem;
+  }
+  .couv-part { height: 100%; border-radius: 3px; background: var(--accent); }
+  .couv-part.pleine { background: var(--vert); }
+  .couv-txt {
+    font-family: var(--mono); font-size: 0.72rem; font-variant-numeric: tabular-nums;
+    color: var(--texte-3); flex: none; letter-spacing: -0.01em;
+  }
+
+  /* ── Cartes ─────────────────────────────────────────────── */
+  .grille { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 44rem) { .grille-2 { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 58rem) { .grille-3 { grid-template-columns: repeat(3, 1fr); } }
+
+  .carte {
+    background: var(--fond-carte);
+    border: 1px solid var(--trait-fin);
+    border-radius: 6px;
+    padding: 1.35rem 1.4rem;
+    display: flex; flex-direction: column; gap: 0.6rem;
+  }
+  .carte p { color: var(--texte-2); font-size: 0.94rem; }
+  .qui { border-left: 2px solid var(--accent); }
+  .qui.pale { border-left-color: var(--trait); }
+
+  /* ── Tableau de mesure ──────────────────────────────────── */
+  .tableau-boite { overflow-x: auto; border: 1px solid var(--trait-fin); border-radius: 6px; background: var(--fond-carte); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  th, td { padding: 0.62rem 0.9rem; text-align: left; border-bottom: 1px solid var(--trait-fin); white-space: nowrap; }
+  thead th {
+    font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--texte-3);
+  }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: none; }
+  tbody th { font-weight: 500; font-family: var(--mono); font-size: 0.82rem; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .ok { color: var(--vert); font-weight: 600; }
+
+  /* ── Codes de sortie ────────────────────────────────────── */
+  .codes { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--trait-fin); border-radius: 6px; overflow: hidden; }
+  .code-l { display: grid; grid-template-columns: 2.6rem 1fr; gap: 0.9rem; padding: 0.75rem 1rem; background: var(--fond-carte); border-bottom: 1px solid var(--trait-fin); align-items: start; }
+  .code-l:last-child { border-bottom: none; }
+  .code-n { font-family: var(--mono); font-weight: 700; font-size: 1.05rem; text-align: center; }
+  .code-l p { font-size: 0.9rem; color: var(--texte-2); }
+  .code-l b { color: var(--texte); font-weight: 600; }
+
+  /* ── Citation / thèse ───────────────────────────────────── */
+  .these {
+    border-left: 3px solid var(--accent);
+    padding: 0.2rem 0 0.2rem 1.3rem;
+    font-family: var(--mono);
+    font-size: clamp(1rem, 2.3vw, 1.24rem);
+    line-height: 1.5; font-weight: 600; letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .note { font-size: 0.87rem; color: var(--texte-3); }
+  .note code, .ic { font-family: var(--mono); font-size: 0.88em; }
+  .ic { background: var(--fond-creux); border: 1px solid var(--trait-fin); border-radius: 3px; padding: 0.08em 0.35em; }
+
+  .bloc-cmd {
+    background: var(--term-fond); color: var(--term-texte);
+    border: 1px solid var(--trait); border-radius: 6px;
+    font-family: var(--mono); font-size: 0.8rem; line-height: 1.85;
+    padding: 0.95rem 1.1rem; overflow-x: auto;
+  }
+  .bloc-cmd > div { white-space: pre; }
+  .cmt { color: var(--term-faible); }
+  .inv { color: #4fb98a; }
+
+  footer { padding-block: 2.6rem 3.4rem; border-top: 1px solid var(--trait-fin); color: var(--texte-3); font-size: 0.86rem; }
+
+  .liste { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+  .liste li { display: grid; grid-template-columns: 1.1rem 1fr; gap: 0.7rem; color: var(--texte-2); font-size: 0.96rem; }
+  .puce { color: var(--accent); font-family: var(--mono); font-weight: 700; line-height: 1.55; }
+
+  :is(a, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+</style>
+
+<header>
+  <div class="enveloppe marque">
+    <b>Mango QA</b>
+    <span>auditeur de code autonome</span>
+  </div>
+</header>
+
+<section class="heros">
+  <div class="enveloppe heros-grille">
+    <div class="pile">
+      <div class="eyebrow">Revue de code automatisée</div>
+      <h1>Il vous dit ce&nbsp;qu'il n'a <span style="color:var(--accent)">pas</span> lu.</h1>
+      <p class="accroche">
+        Tous les auditeurs de code rendent un verdict. Mango QA est le seul qui déclare
+        <strong>le périmètre sur lequel ce verdict porte</strong> — combien de fichiers
+        il a réellement envoyés au modèle, et lesquels il a laissés de côté.
+      </p>
+      <p class="accroche">
+        Un feu vert sur 27&nbsp;% du code n'est pas un feu vert. C'est le mensonge par
+        omission que ce produit existe pour rendre impossible.
+      </p>
+    </div>
+
+    <div class="term" role="img" aria-label="Sortie de terminal : audit du projet abyss. Sécurité feu vert 4 sur 4 fichiers vus, Accessibilité feu vert 13 sur 13, Performance feu vert 19 sur 19, Tests feu rouge 19 sur 19. Couverture complète, 20 fichiers lus et vus en entier. Verdict feu rouge sur la branche tests.">
+      <div class="term-barre"><span class="pastille"></span><span class="pastille"></span><span class="pastille"></span> mangoqa ./abyss</div>
+      <div class="term-corps" aria-hidden="true">
+<div class="l-faible">$ mangoqa ./abyss</div>
+<div> </div>
+<div><span class="l-vert">🟢</span> Sécurité        61.5s   <span class="l-fort">4/4 vus</span>    Aucune vulnérabilité OWASP détectée.</div>
+<div><span class="l-vert">🟢</span> Accessibilité  137.2s  <span class="l-fort">13/13 vus</span>  Aucune barrière d'accès concrète.</div>
+<div><span class="l-vert">🟢</span> Architecture   315.2s  <span class="l-fort">19/19 vus</span>  Aucune violation structurelle.</div>
+<div><span class="l-vert">🟢</span> Performance    345.5s  <span class="l-fort">19/19 vus</span>  Aucun anti-pattern majeur.</div>
+<div><span class="l-rouge">🔴</span> Tests          351.0s  <span class="l-fort">19/19 vus</span>  Aucun fichier de test n'existe.</div>
+<div> </div>
+<div class="l-faible">  COUVERTURE : <span class="l-vert">complète</span> — 20 fichiers lus et vus en entier.</div>
+<div> </div>
+<div class="l-fort">  VERDICT : <span class="l-rouge">🔴 FEU ROUGE</span> — branche tests</div>
+<div class="l-faible">  Correctif : « Créer des tests pour la logique métier,</div>
+<div class="l-faible">               notamment les hooks et les validations. »</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="creux">
+  <div class="enveloppe pile-large">
+    <div class="texte pile">
+      <div class="eyebrow">Pourquoi</div>
+      <h2>Vous produisez du code plus vite que vous ne le relisez.</h2>
+      <p style="color:var(--texte-2)">
+        C'est le vrai changement des deux dernières années, et il a un effet de bord :
+        la relecture est devenue le goulot. Alors on la délègue à un modèle — et on hérite
+        d'un problème plus discret que celui qu'on voulait résoudre.
+      </p>
+    </div>
+
+    <div class="enveloppe grille grille-3">
+      <div class="carte">
+        <h3>Le silence est indétectable</h3>
+        <p>
+          Un relecteur automatique lit une partie de votre code, puis rend un verdict sur
+          le tout. Un vrai défaut situé dans la partie non lue produit un feu vert — et
+          rien, nulle part, n'indique que l'audit était partiel.
+        </p>
+      </div>
+      <div class="carte">
+        <h3>Un faux positif se voit. Une omission, non.</h3>
+        <p>
+          Quand l'outil crie au loup, vous le constatez et vous l'ignorez. Quand il se tait
+          sur ce qu'il n'a pas regardé, vous n'avez aucun moyen de le savoir. Le second cas
+          est celui qui coûte cher.
+        </p>
+      </div>
+      <div class="carte">
+        <h3>« Rien trouvé » ≠ « rien à trouver »</h3>
+        <p>
+          Ces deux phrases sont différentes et la plupart des outils les rendent
+          identiques. Mango QA les distingue partout : dans le prompt envoyé au modèle,
+          dans le rapport, dans le verdict, et dans sa sortie machine.
+        </p>
+      </div>
+    </div>
+
+    <div class="texte">
+      <p class="these">
+        Un auditeur a le droit de ne pas tout lire.<br>Il n'a pas le droit de le taire.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="enveloppe pile-large">
+    <div class="texte pile">
+      <div class="eyebrow">Pour qui</div>
+      <h2>Pour qui sait lire un verdict d'audit.</h2>
+      <p style="color:var(--texte-2)">
+        Mango QA ne remplace pas votre jugement, il vous donne de quoi l'exercer. Il
+        s'adresse donc d'abord à ceux qui savent quoi faire d'un « feu rouge, branche
+        sécurité, injection SQL ligne 40 ».
+      </p>
+    </div>
+
+    <div class="enveloppe grille grille-3">
+      <div class="carte qui">
+        <div class="eyebrow">Cœur de cible</div>
+        <h3>Le développeur solo</h3>
+        <p>
+          Vous générez beaucoup, vous relisez seul, personne ne vous fait de revue. Mango
+          QA est le deuxième regard que vous n'avez pas — et il tourne sur votre machine,
+          gratuitement, autant de fois que vous voulez.
+        </p>
+      </div>
+      <div class="carte qui">
+        <div class="eyebrow">Deuxième vague</div>
+        <h3>L'agence, le freelance</h3>
+        <p>
+          Vous livrez du code à des clients et vous engagez votre nom dessus. Un rapport
+          qui déclare son périmètre est un rapport que vous pouvez joindre à une livraison
+          sans risquer de promettre plus que ce qui a été vérifié.
+        </p>
+      </div>
+      <div class="carte qui pale">
+        <div class="eyebrow">Intégration</div>
+        <h3>Votre CI, votre assistant</h3>
+        <p>
+          Un code de sortie par situation, un serveur MCP pour brancher l'auditeur dans
+          Claude Code ou tout client compatible. La couverture y est un champ obligatoire :
+          un assistant ne peut pas relayer un verdict sans son périmètre.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="creux">
+  <div class="enveloppe pile-large">
+    <div class="texte pile">
+      <div class="eyebrow">Comment</div>
+      <h2>Trois commandes, aucune configuration.</h2>
+      <p style="color:var(--texte-2)">
+        L'installation pèse 1,6 Mo. Le cerveau d'audit est un modèle local joint en HTTP :
+        aucun octet de votre code ne quitte votre machine, et chaque audit coûte zéro.
+      </p>
+    </div>
+
+    <div class="texte pile">
+      <div class="bloc-cmd">
+<div><span class="cmt"># installer</span></div>
+<div><span class="inv">$</span> npm i -g mango-qa</div>
+<div> </div>
+<div><span class="cmt"># auditer</span></div>
+<div><span class="inv">$</span> mangoqa ./mon-projet</div>
+<div> </div>
+<div><span class="cmt"># cibler une préoccupation</span></div>
+<div><span class="inv">$</span> mangoqa ./mon-projet --only security,tests</div>
+<div> </div>
+<div><span class="cmt"># en intégration continue : refuser un feu vert partiel</span></div>
+<div><span class="inv">$</span> mangoqa . --json rapport.json --exiger-couverture</div>
+      </div>
+      <p class="note">
+        Six branches d'audit spécialisées — architecture, sécurité, accessibilité,
+        performance, tests, design system — chacune avec son propre périmètre de fichiers
+        et sa propre couverture déclarée.
+      </p>
+    </div>
+
+    <div class="texte pile">
+      <h3 style="font-size:0.95rem;color:var(--texte-3);letter-spacing:0.09em;text-transform:uppercase;font-weight:600">Codes de sortie</h3>
+      <div class="codes">
+        <div class="code-l">
+          <div class="code-n" style="color:var(--vert)">0</div>
+          <p><b>Feu vert.</b> Aucune branche bloquante en échec.</p>
+        </div>
+        <div class="code-l">
+          <div class="code-n" style="color:var(--rouge)">1</div>
+          <p><b>Feu rouge.</b> Une branche bloquante a trouvé un défaut concret, avec son correctif.</p>
+        </div>
+        <div class="code-l">
+          <div class="code-n" style="color:var(--texte-3)">2</div>
+          <p><b>Erreur d'usage.</b> Dossier introuvable, option inconnue. <em>Jamais</em> un défaut d'audit — votre CI ne confondra pas les deux.</p>
+        </div>
+        <div class="code-l">
+          <div class="code-n" style="color:var(--accent)">3</div>
+          <p><b>Feu vert sur lecture partielle</b>, avec <span class="ic">--exiger-couverture</span>. Distinct du rouge : aucun défaut n'a été trouvé. On refuse seulement de traiter « rien vu » comme « rien à signaler ».</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="enveloppe pile-large">
+    <div class="texte pile">
+      <div class="eyebrow">Ce qu'on a mesuré</div>
+      <h2>Nous publions notre propre taux d'erreur.</h2>
+      <p style="color:var(--texte-2)">
+        Sortir un auditeur dont on ignore le taux d'erreur serait exactement la faute qu'on
+        reproche aux générateurs de code. Mango QA est évalué contre un corpus de
+        <strong>32 cas étiquetés</strong> — des défauts réels, injectés et localisés, plus
+        des contrôles propres pour mesurer les fausses alertes.
+      </p>
+    </div>
+
+    <div class="enveloppe">
+      <div class="tableau-boite">
+        <table>
+          <caption class="note" style="text-align:left;padding:0.85rem 0.9rem 0.2rem">
+            Corpus « fichiers longs » — 9 cas de 150 à 240 lignes, 3 passes, modèle local <span class="ic">qwen2.5-coder:14b</span>.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Branche</th>
+              <th scope="col">Détection</th>
+              <th scope="col">Fausses alertes</th>
+              <th scope="col">Verdicts instables</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">architecture</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 3</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">sécurité</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 3</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">accessibilité</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 6</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">performance</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 6</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">tests</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 3</td><td class="num ok">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="texte pile">
+      <ul class="liste">
+        <li><span class="puce">→</span><span><b>Chaque défaut a un jumeau propre.</b> Le même fichier, à une ligne près. Sans lui, un outil qui crie au loup sur tout code long afficherait 100 % de détection.</span></li>
+        <li><span class="puce">→</span><span><b>Le défaut est enfoui</b> dans le dernier tiers du fichier, jamais en tête.</span></li>
+        <li><span class="puce">→</span><span><b>Les motifs sont vérifiés à la main.</b> Un verdict juste peut l'être pour la mauvaise raison — nous lisons ce que la branche a cité, pas seulement si elle a dit « fail ».</span></li>
+      </ul>
+    </div>
+
+    <div class="texte pile" style="gap:0.9rem">
+      <h3 style="font-size:0.95rem;color:var(--texte-3);letter-spacing:0.09em;text-transform:uppercase;font-weight:600">Ce que cette mesure n'établit pas</h3>
+      <p style="color:var(--texte-2);font-size:0.96rem">
+        Derrière ces chiffres il y a <strong>un seul défaut par branche</strong>, répété trois
+        fois, sur un modèle et une machine. La stabilité est mesurée ; l'étendue ne l'est pas
+        encore. Et un faux positif observé une fois sur un projet réel n'a jamais été reproduit
+        par ce corpus — donc il n'est pas expliqué.
+      </p>
+      <p class="note">
+        C'est écrit ici pour la même raison que la couverture est écrite dans le verdict.
+        Un outil qui vous demande de ne pas croire les logiciels sur parole ne peut pas
+        vous demander de le croire sur parole.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="creux">
+  <div class="enveloppe pile-large">
+    <div class="texte pile">
+      <div class="eyebrow">Souveraineté</div>
+      <h2>Votre code reste chez vous.</h2>
+    </div>
+
+    <div class="enveloppe grille grille-3">
+      <div class="carte">
+        <div class="couv"><div class="couv-piste"><div class="couv-part pleine" style="width:100%"></div></div><span class="couv-txt">100 %</span></div>
+        <h3>Local par défaut</h3>
+        <p>Le cerveau d'audit est un modèle qui tourne sur votre machine. <span class="ic">QA_LOCAL_ONLY=on</span> garantit qu'aucun repli vers un service distant n'est possible.</p>
+      </div>
+      <div class="carte">
+        <div class="couv"><div class="couv-piste"><div class="couv-part" style="width:8%"></div></div><span class="couv-txt">1,6 Mo</span></div>
+        <h3>Installation minuscule</h3>
+        <p>Les dépendances lourdes — SDK cloud, moteurs d'analyse syntaxique — sont optionnelles et ne s'installent que si vous les demandez.</p>
+      </div>
+      <div class="carte">
+        <div class="couv"><div class="couv-piste"><div class="couv-part pleine" style="width:100%"></div></div><span class="couv-txt">0 €</span></div>
+        <h3>Coût par audit</h3>
+        <p>Aucun jeton facturé, aucun quota. Auditez à chaque commit si vous voulez : la seule limite est le temps de calcul de votre machine.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="enveloppe pile-serre">
+    <div class="marque"><b>Mango QA</b><span>audit fantôme · six branches · couverture déclarée</span></div>
+    <p>Maquette produit — les chiffres cités proviennent des mesures du 5 août 2026 sur corpus étiqueté et sur projet réel.</p>
+  </div>
+</footer>

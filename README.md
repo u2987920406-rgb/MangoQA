@@ -3,6 +3,10 @@
 Processus Node.js **indépendant** de MangoOS qui audite chaque phase de build et
 répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
 
+> 📄 **`docs/produit.html`** — la page produit : à quoi ça sert, pourquoi, pour qui.
+> Ce README documente le *comment* pour qui travaille sur le code ; cette page-là
+> explique le *pourquoi* à qui doit décider de s'en servir.
+
 Depuis J1/J3 (2026-08), il s'utilise aussi **seul**, sans MangoOS, sans fichier-signal :
 
 ```bash
