@@ -27,6 +27,262 @@
 import type { EvalCase } from './corpus.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Page de paramètres — partagée par LONG-08 (propre) et LONG-09 (div cliquable).
+//
+// Même technique que la paire Catalogue : UN seul corps, UNE seule ligne de
+// différence. C'est la construction la plus sévère du corpus — le modèle ne peut
+// pas distinguer les deux cas autrement qu'en jugeant la ligne en cause.
+//
+// Le voisinage est délibérément IRRÉPROCHABLE côté accessibilité : chaque champ a
+// son <label htmlFor>, les groupes ont fieldset/legend, l'avatar a un alt utile, la
+// confirmation passe par une région aria-live, la hiérarchie de titres est plate, et
+// toutes les autres commandes sont de vrais <button>. Une branche qui réagirait au
+// mot-clé « formulaire » plutôt qu'au code crierait au loup ici.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PARAMETRES_TETE = `import { useEffect, useMemo, useState } from 'react'
+import CarteAppareil from './CarteAppareil.jsx'
+import { chargerCompte, enregistrerCompte, revoquerSession } from '../lib/compte.js'
+
+const FUSEAUX = ['Europe/Paris', 'Europe/Lisbon', 'America/Montreal', 'Asia/Tokyo']
+const FREQUENCES = [
+  { id: 'immediate', libelle: 'À chaque événement' },
+  { id: 'quotidienne', libelle: 'Résumé quotidien' },
+  { id: 'hebdomadaire', libelle: 'Résumé hebdomadaire' },
+  { id: 'aucune', libelle: 'Aucune notification' },
+]
+const CANAUX = ['courriel', 'push', 'sms']
+
+function estCourrielValide(valeur) {
+  return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(valeur.trim())
+}
+
+export default function ParametresCompte({ utilisateur }) {
+  const [nom, setNom] = useState(utilisateur?.nom ?? '')
+  const [courriel, setCourriel] = useState(utilisateur?.courriel ?? '')
+  const [fuseau, setFuseau] = useState(utilisateur?.fuseau ?? 'Europe/Paris')
+  const [frequence, setFrequence] = useState('quotidienne')
+  const [canaux, setCanaux] = useState(['courriel'])
+  const [sessions, setSessions] = useState([])
+  const [chargement, setChargement] = useState(true)
+  const [statut, setStatut] = useState(null)
+  const [erreur, setErreur] = useState(null)
+
+  useEffect(() => {
+    let annule = false
+    chargerCompte()
+      .then((donnees) => {
+        if (annule) return
+        setSessions(donnees.sessions ?? [])
+        setCanaux(donnees.canaux ?? ['courriel'])
+      })
+      .catch((err) => {
+        if (!annule) setErreur(err.message ?? 'Chargement impossible')
+      })
+      .finally(() => {
+        if (!annule) setChargement(false)
+      })
+    return () => {
+      annule = true
+    }
+  }, [])
+
+  const courrielValide = useMemo(() => estCourrielValide(courriel), [courriel])
+  const modifiable = !chargement && nom.trim().length > 0 && courrielValide
+
+  function basculerCanal(canal) {
+    setCanaux((precedent) =>
+      precedent.includes(canal) ? precedent.filter((c) => c !== canal) : [...precedent, canal],
+    )
+  }
+
+  async function surEnregistrer(evenement) {
+    evenement.preventDefault()
+    setStatut(null)
+    setErreur(null)
+    try {
+      await enregistrerCompte({ nom, courriel, fuseau, frequence, canaux })
+      setStatut('Vos préférences ont été enregistrées.')
+    } catch (err) {
+      setErreur(err.message ?? 'Enregistrement impossible')
+    }
+  }
+
+  async function surRevoquer(identifiant) {
+    try {
+      await revoquerSession(identifiant)
+      setSessions((liste) => liste.filter((s) => s.id !== identifiant))
+      setStatut('La session a été révoquée.')
+    } catch (err) {
+      setErreur(err.message ?? 'Révocation impossible')
+    }
+  }
+
+  if (chargement) {
+    return (
+      <p role="status" aria-live="polite">
+        Chargement de vos paramètres…
+      </p>
+    )
+  }
+
+  return (
+    <main className="parametres" aria-labelledby="titre-parametres">
+      <h1 id="titre-parametres">Paramètres du compte</h1>
+
+      {/* Les messages de succès et d'erreur sont annoncés aux lecteurs d'écran. */}
+      <p role="status" aria-live="polite" className="parametres__statut">
+        {statut}
+      </p>
+      {erreur && (
+        <p role="alert" className="parametres__erreur">
+          {erreur}
+        </p>
+      )}
+
+      <img
+        src={utilisateur.avatar}
+        alt={\`Photo de profil de \${utilisateur.nom}\`}
+        width="96"
+        height="96"
+      />
+
+      <form onSubmit={surEnregistrer}>
+        <h2>Identité</h2>
+
+        <label htmlFor="champ-nom">Nom affiché</label>
+        <input
+          id="champ-nom"
+          type="text"
+          value={nom}
+          autoComplete="name"
+          onChange={(e) => setNom(e.target.value)}
+        />
+
+        <label htmlFor="champ-courriel">Adresse de courriel</label>
+        <input
+          id="champ-courriel"
+          type="email"
+          value={courriel}
+          autoComplete="email"
+          aria-invalid={!courrielValide}
+          aria-describedby="aide-courriel"
+          onChange={(e) => setCourriel(e.target.value)}
+        />
+        <p id="aide-courriel">Sert à la connexion et aux notifications importantes.</p>
+
+        <label htmlFor="champ-fuseau">Fuseau horaire</label>
+        <select id="champ-fuseau" value={fuseau} onChange={(e) => setFuseau(e.target.value)}>
+          {FUSEAUX.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+
+        <h2>Notifications</h2>
+
+        <fieldset>
+          <legend>Fréquence des résumés</legend>
+          {FREQUENCES.map((f) => (
+            <label key={f.id} htmlFor={\`freq-\${f.id}\`}>
+              <input
+                id={\`freq-\${f.id}\`}
+                type="radio"
+                name="frequence"
+                value={f.id}
+                checked={frequence === f.id}
+                onChange={() => setFrequence(f.id)}
+              />
+              {f.libelle}
+            </label>
+          ))}
+        </fieldset>
+
+        <fieldset>
+          <legend>Canaux de réception</legend>
+          {CANAUX.map((canal) => (
+            <label key={canal} htmlFor={\`canal-\${canal}\`}>
+              <input
+                id={\`canal-\${canal}\`}
+                type="checkbox"
+                checked={canaux.includes(canal)}
+                onChange={() => basculerCanal(canal)}
+              />
+              {canal}
+            </label>
+          ))}
+        </fieldset>
+
+        <button type="submit" disabled={!modifiable}>
+          Enregistrer les modifications
+        </button>
+        <button type="button" onClick={() => window.history.back()}>
+          Annuler
+        </button>
+      </form>
+`
+
+const PARAMETRES_PIED = `
+      <footer className="parametres__pied">
+        <p>Besoin d'aide ? Écrivez à support@example.com.</p>
+      </footer>
+    </main>
+  )
+}
+`
+
+/** La commande « Révoquer » — SEULE différence entre le cas propre et le cas fautif.
+ *  Enfouie dans le dernier tiers, au milieu d'une section par ailleurs conforme. */
+const sectionSessions = (bouton: boolean): string => `
+      <section aria-labelledby="titre-sessions">
+        <h2 id="titre-sessions">Sessions actives</h2>
+        <p>Voici les appareils actuellement connectés à votre compte.</p>
+
+        <ul className="parametres__sessions">
+          {sessions.map((session) => (
+            <li key={session.id} className="parametres__session">
+              <CarteAppareil appareil={session.appareil} lieu={session.lieu} vueLe={session.vueLe} />
+              ${
+                bouton
+                  ? `<button
+                type="button"
+                onClick={() => surRevoquer(session.id)}
+                aria-label={\`Révoquer la session sur \${session.appareil}\`}
+              >
+                Révoquer
+              </button>`
+                  : `<div
+                className="parametres__revoquer"
+                onClick={() => surRevoquer(session.id)}
+              >
+                Révoquer
+              </div>`
+              }
+            </li>
+          ))}
+        </ul>
+      </section>
+`
+
+const CARTE_APPAREIL = `export default function CarteAppareil({ appareil, lieu, vueLe }) {
+  return (
+    <article className="carte-appareil">
+      <h3>{appareil}</h3>
+      <dl>
+        <dt>Lieu</dt>
+        <dd>{lieu}</dd>
+        <dt>Dernière activité</dt>
+        <dd>
+          <time dateTime={vueLe}>{new Date(vueLe).toLocaleString('fr-FR')}</time>
+        </dd>
+      </dl>
+    </article>
+  )
+}
+`
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Logique de facturation — partagée par LONG-05 (non testée) et LONG-06 (testée).
 // Non triviale À DESSEIN : paliers de remise, proratisation, TVA par pays, arrondis.
 // C'est exactement le genre de code dont l'absence de test est un vrai défaut, et
@@ -1156,6 +1412,57 @@ async function chargerMarges(periodeId) {
 }
 `,
       },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // (2026-08-05, 3ᵉ vague) Accessibilité était la DERNIÈRE branche bloquante sans
+  // cas de détection sur du code long : elle n'avait qu'un contrôle négatif
+  // (LONG-01). « La détection survit à l'enfouissement » n'était donc pas établi
+  // pour elle. Paire construite sur le corps partagé, comme LONG-01/LONG-02.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  {
+    // Le jumeau propre. Il compte autant que le fautif : une branche qui répondrait
+    // « fail » à tout formulaire long obtiendrait 100 % de détection sans lui.
+    id: 'LONG-08-parametres-propre',
+    defect:
+      'RIEN — page de paramètres de ~200 lignes, accessible de bout en bout : chaque champ ' +
+      'a son <label htmlFor>, les groupes ont fieldset/legend, l\'avatar a un alt utile, les ' +
+      'messages passent par une région aria-live, et toutes les commandes sont de vrais <button>.',
+    location: 'src/pages/ParametresCompte.jsx',
+    rule: 'Contrôle négatif long (WCAG 2.2)',
+    expect: { accessibility: 'pass' },
+    testsElsewhereInProject: true,
+    files: [
+      {
+        path: 'src/pages/ParametresCompte.jsx',
+        content: PARAMETRES_TETE + sectionSessions(true) + PARAMETRES_PIED,
+      },
+      { path: 'src/components/CarteAppareil.jsx', content: CARTE_APPAREIL },
+    ],
+  },
+  {
+    id: 'LONG-09-parametres-div-cliquable',
+    defect:
+      'Commande « Révoquer » rendue en <div onClick> — sans rôle, sans tabIndex, sans gestion ' +
+      'clavier. Inatteignable au clavier et invisible aux technologies d\'assistance, alors que ' +
+      'TOUTES les autres commandes de la page sont de vrais <button>.',
+    location: 'src/pages/ParametresCompte.jsx — section « Sessions actives », dernier tiers',
+    rule: 'WCAG 2.2 — 2.1.1 (Clavier) / 4.1.2 (Nom, rôle, valeur)',
+    expect: { accessibility: 'fail' },
+    testsElsewhereInProject: true,
+    // ⚠️ PIÈGE DE MESURE, à vérifier À LA MAIN comme pour LONG-07 : une page de
+    // formulaire longue offre beaucoup de prises à un auditeur d'accessibilité. Si
+    // la branche répond « fail » en citant un label manquant ou un contraste, c'est
+    // la bonne réponse pour la mauvaise raison — le voisinage est irréprochable
+    // précisément pour que la seule violation disponible soit le div cliquable.
+    files: [
+      {
+        path: 'src/pages/ParametresCompte.jsx',
+        content: PARAMETRES_TETE + sectionSessions(false) + PARAMETRES_PIED,
+      },
+      { path: 'src/components/CarteAppareil.jsx', content: CARTE_APPAREIL },
     ],
   },
 ]

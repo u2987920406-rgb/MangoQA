@@ -165,7 +165,9 @@ croyait** : la capacité à juger un défaut *isolé*, dans un fichier de 12 à 
   ressemblent au défaut : quatre `.map()` en série, du HTML injecté mais assaini. C'est là que
   naissent les hallucinations, pas sur du code neutre.
 
-`LONG-01` est le rejeu exact du faux positif de J1. Corpus : **27 cas** (21 à défaut, 6 propres).
+`LONG-01` est le rejeu exact du faux positif de J1. Corpus : **32 cas** (24 à défaut, 8 propres),
+dont **9 cas longs** — chaque branche bloquante y a désormais un défaut à trouver ET un jumeau
+propre à ne pas rejeter.
 
 ### Mesure — 9 observations, 1 passe, `qwen2.5-coder:14b`, 439 s
 
@@ -207,25 +209,32 @@ s'y mêlent, qu'il fallait séparer avant de compter un point :
 > Retirer une assertion mal fondée n'est pas blanchir un score — la garder l'aurait été. Le
 > contrôle « long fichier architecturalement propre » existe déjà et il passe : c'est `LONG-04`.
 
-### Mesure finale — 7 cas, 3 passes, 33 observations, 959 s
+### Mesure finale — 9 cas, 3 passes, 39 observations, 1 219 s
+
+> Étendue le **2026-08-05** : `LONG-08`/`LONG-09` ajoutent la paire Accessibilité, qui
+> était la dernière branche bloquante sans cas de DÉTECTION sur du code long (elle
+> n'avait qu'un contrôle négatif). Table et commentaire ci-dessous à jour de cette
+> mesure ; l'historique des passes antérieures est dans les `J0-2026-08-05-*.md`.
 
 Une passe ne mesure pas la stabilité : un faux positif intermittent serait manqué une fois sur
-deux. Et la 1ʳᵉ vague de cas longs n'exerçait que 2 branches avec un vrai défaut. Trois cas ont
-donc été ajoutés (`LONG-05` tests non testés · `LONG-06` **contrôle positif**, même logique
-testée · `LONG-07` couplage UI↔base enfoui), puis `--repeat 3`, repli Claude coupé :
+deux. Et la 1ʳᵉ vague de cas longs n'exerçait que 2 branches avec un vrai défaut. Cinq cas ont
+donc été ajoutés en deux vagues — `LONG-05` tests non testés · `LONG-06` **contrôle positif**,
+même logique testée · `LONG-07` couplage UI↔base enfoui · `LONG-08`/`LONG-09` la paire
+Accessibilité — puis `--repeat 3`, repli Claude coupé :
 
 | Branche | Détection (cas) | Faux positifs (jugements réels) | **Instables** | Durée moy. |
 |---|---|---|---|---|
-| architecture | **1/1** aux 3 passes | 0/3 | **0** | 44,3 s |
-| security | **1/1** aux 3 passes | 0/3 *(+3 hors périmètre)* | **0** | 21,7 s |
-| performance | **1/1** aux 3 passes | 0/6 | **0** | 25,9 s |
-| tests | **1/1** aux 3 passes | 0/3 | **0** | 33,7 s |
-| accessibility | — | 0/3 | **0** | 21,1 s |
+| architecture | **1/1** aux 3 passes | 0/3 | **0** | 44,5 s |
+| security | **1/1** aux 3 passes | 0/3 *(+3 hors périmètre)* | **0** | 22,0 s |
+| accessibility | **1/1** aux 3 passes | 0/6 | **0** | 34,7 s |
+| performance | **1/1** aux 3 passes | 0/6 | **0** | 26,4 s |
+| tests | **1/1** aux 3 passes | 0/3 | **0** | 34,0 s |
 
-**Les quatre branches bloquantes détectent leur défaut enfoui, aux trois passes.** Le harnais
-compte volontairement sévère : un cas ne compte comme détecté que si **toutes** les passes l'ont
-détecté. **Zéro verdict instable, zéro faux positif sur 18 jugements propres réels** — dont les
-trois passes sur `LONG-01`, le rejeu exact du cas de J1.
+**Les quatre branches bloquantes détectent leur défaut enfoui, aux trois passes** — et chacune a
+aussi son jumeau propre à ne pas rejeter. Le harnais compte volontairement sévère : un cas ne
+compte comme détecté que si **toutes** les passes l'ont détecté. **Zéro verdict instable, zéro
+faux positif sur 21 jugements propres réels** — dont les trois passes sur `LONG-01`, le rejeu
+exact du cas de J1.
 
 ### Les motifs, vérifiés à la main — un verdict juste peut l'être pour la mauvaise raison
 
@@ -238,10 +247,21 @@ mot près :
 > « Le composant de présentation TableauBordVentes ouvre une connexion directe à la base de
 > données, ce qui crée un couplage fort évitable. »
 
-Et le contrôle positif a fait son travail : `LONG-06` → *« toutes les fonctions logiques
-importantes sont couvertes par des tests »*, trois fois sur trois. La branche a donc lu le
-fichier de test, pas seulement compté des fichiers. **Sans ce contrôle, le 1/1 de `LONG-05`
-n'aurait rien valu** : une branche répondant « fail » à tout code long aurait affiché 100 %.
+`LONG-09` posait le même risque en plus aigu : une page de formulaire de 224 lignes offre
+beaucoup de prises à un auditeur d'accessibilité, et un `fail` citant un label manquant ou un
+contraste aurait été la bonne réponse pour la mauvaise raison. Le voisinage a donc été rendu
+irréprochable — `label htmlFor` partout, `fieldset`/`legend`, `alt` utile, région `aria-live`,
+tous les autres contrôles en vrais `<button>`. Les trois passes citent le défaut injecté :
+
+> « Un élément cliquable est un `div onClick` sans rôle clavier. »
+
+Signal secondaire cohérent : `LONG-09` a demandé **66 s** contre **21 s** pour son jumeau propre,
+à sept lignes de différence. Chercher a coûté trois fois plus que ne rien trouver.
+
+Et les contrôles positifs ont fait leur travail : `LONG-06` → *« toutes les fonctions logiques
+importantes sont couvertes par des tests »*, `LONG-08` → *« aucune barrière d'accès concrète
+détectée »*, trois fois sur trois chacun. **Sans eux, les 1/1 de `LONG-05` et `LONG-09`
+n'auraient rien valu** : une branche répondant « fail » à tout code long afficherait 100 %.
 
 ### Un défaut du HARNAIS, trouvé en relisant ses propres chiffres
 
@@ -271,9 +291,9 @@ une donnée — les 39 % de couches sur CPU se disputent les 4 cœurs.
 
 ### Ce que cette mesure n'établit toujours PAS
 
-Les répétitions mesurent la **stabilité**, pas l'étendue. Derrière les 33 observations il y a
-**4 jugements de défaut** et **6 jugements propres** distincts, répétés 3 fois chacun. Un seul
-modèle, une seule machine, sept cas.
+Les répétitions mesurent la **stabilité**, pas l'étendue. Derrière les 39 observations il y a
+**5 jugements de défaut** et **7 jugements propres** distincts, répétés 3 fois chacun — soit un
+seul défaut par branche bloquante. Un seul modèle, une seule machine, neuf cas.
 
 Et surtout : **le faux positif d'`abyss` n'est toujours pas expliqué.** Il a été observé une
 fois, le 2026-08-04, et ce corpus ne le reproduit ni systématiquement ni par intermittence.

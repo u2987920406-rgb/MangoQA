@@ -1,0 +1,427 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "jugementsPropres": 3,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 45254
+    },
+    {
+      "branch": "security",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 3,
+      "horsPerimetre": 3,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 25071
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 0,
+      "detectes": 0,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "jugementsPropres": 3,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 27395
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 6,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 31965
+    },
+    {
+      "branch": "tests",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "jugementsPropres": 3,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 39255
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 39815
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète détectée.",
+      "durationMs": 39566
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "LONG-02-catalogue-cle-manquante",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Clé manquante dans une liste (.map sans key ou key=index sur liste mutable)",
+      "durationMs": 53964
+    },
+    {
+      "caseId": "LONG-03-admin-xss-enfoui",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Utilisation de innerHTML avec donnée non assainie.",
+      "durationMs": 62304
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune vulnérabilité OWASP visible dans le code.",
+      "durationMs": 31450
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune violation structurelle critique détectée.",
+      "durationMs": 34873
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern ou problème de performance détecté dans le code fourni.",
+      "durationMs": 37045
+    },
+    {
+      "caseId": "LONG-05-facturation-non-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Aucun test pour la logique de facturation complexe.",
+      "durationMs": 55224
+    },
+    {
+      "caseId": "LONG-06-facturation-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Toutes les fonctions logiques importantes sont couvertes par des tests.",
+      "durationMs": 43824
+    },
+    {
+      "caseId": "LONG-07-couplage-ui-db-enfoui",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation TableauBordVentes ouvre une connexion directe à la base de données, ce qui crée un couplage fort évitable.",
+      "durationMs": 57756
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 21152
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète détectée.",
+      "durationMs": 21270
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "security",
+      "pass": 2,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "LONG-02-catalogue-cle-manquante",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Clé manquante dans une liste (.map sans key ou key=index sur liste mutable)",
+      "durationMs": 35591
+    },
+    {
+      "caseId": "LONG-03-admin-xss-enfoui",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Utilisation de innerHTML avec donnée non assainie.",
+      "durationMs": 45698
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "security",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune vulnérabilité OWASP visible dans le code.",
+      "durationMs": 19816
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune violation structurelle critique détectée.",
+      "durationMs": 31148
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern ou problème de performance détecté dans le code fourni.",
+      "durationMs": 21524
+    },
+    {
+      "caseId": "LONG-05-facturation-non-testee",
+      "branch": "tests",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Aucun test pour les fonctions de calcul facturation.",
+      "durationMs": 44622
+    },
+    {
+      "caseId": "LONG-06-facturation-testee",
+      "branch": "tests",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Toutes les fonctions logiques importantes sont couvertes par des tests.",
+      "durationMs": 23507
+    },
+    {
+      "caseId": "LONG-07-couplage-ui-db-enfoui",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation TableauBordVentes ouvre une connexion directe à la base de données, ce qui crée un couplage fort évitable.",
+      "durationMs": 58386
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern majeur détecté dans le code fourni.",
+      "durationMs": 21204
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "accessibility",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète détectée.",
+      "durationMs": 21348
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "security",
+      "pass": 3,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "LONG-02-catalogue-cle-manquante",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Clé manquante dans une liste (.map sans key ou key=index sur liste mutable)",
+      "durationMs": 35672
+    },
+    {
+      "caseId": "LONG-03-admin-xss-enfoui",
+      "branch": "security",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Utilisation de innerHTML avec donnée non assainie.",
+      "durationMs": 46336
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "security",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune vulnérabilité OWASP visible dans le code.",
+      "durationMs": 20037
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune violation structurelle critique détectée.",
+      "durationMs": 31152
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "performance",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern ou problème de performance détecté dans le code fourni.",
+      "durationMs": 21720
+    },
+    {
+      "caseId": "LONG-05-facturation-non-testee",
+      "branch": "tests",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Aucun test pour les fonctions de calcul facturation.",
+      "durationMs": 44539
+    },
+    {
+      "caseId": "LONG-06-facturation-testee",
+      "branch": "tests",
+      "pass": 3,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Toutes les fonctions logiques importantes sont couvertes par des tests.",
+      "durationMs": 23811
+    },
+    {
+      "caseId": "LONG-07-couplage-ui-db-enfoui",
+      "branch": "architecture",
+      "pass": 3,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation TableauBordVentes ouvre une connexion directe à la base de données, ce qui crée un couplage fort évitable.",
+      "durationMs": 58207
+    }
+  ],
+  "totalMs": 1102562
+}
