@@ -16,6 +16,7 @@ import { realpathSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { auditProject, ALL_BRANCHES, type AuditReport, type BranchResultLite } from './audit.js'
 import { CERVEAUX, cerveauPrimaire, type Cerveau } from './llm.js'
+import { fichiersModifies } from './git.js'
 
 const VERSION = '2.1.0'
 
@@ -39,6 +40,10 @@ USAGE
   mangoqa <dossier> [options]
 
 OPTIONS
+  --diff [ref]            N'auditer que ce qui a changé.
+                            sans ref  → ce qui n'est pas encore commité (avant de pousser)
+                            avec ref  → ce qui a divergé depuis ce point (avant de fusionner)
+                                        ex. --diff main, --diff v1.2.0, --diff a1b2c3d
   --cerveau <nom>         Cerveau d'audit : ${CERVEAUX.join(' | ')}. Défaut : ollama.
                           RECOMMANDÉ : claude (qualité de jugement nettement supérieure).
   --modele <id>           Modèle du cerveau claude. Défaut : claude-opus-5.
@@ -72,6 +77,8 @@ export interface CliOptions {
   cap?: number
   cerveau?: Cerveau
   modele?: string
+  /** `--diff` demandé. `ref` absent = travail non commité. */
+  diff?: { ref?: string }
   json: boolean
   jsonFichier?: string
   exigerCouverture: boolean
@@ -134,6 +141,11 @@ export function parseArgs(argv: string[]): CliOptions | { aide: string } {
       }
       case '--modele':
         opts.modele = valeur()
+        break
+      case '--diff':
+        // Référence FACULTATIVE, comme `--json`. Un argument qui commence par `-`
+        // est une option, pas une référence git.
+        opts.diff = argv[i + 1] && !argv[i + 1].startsWith('-') ? { ref: argv[++i] } : {}
         break
       case '--json':
         opts.json = true
@@ -275,9 +287,29 @@ export async function main(argv: string[]): Promise<number> {
     const detail = cerveau === 'claude' ? process.env.QA_MODEL ?? 'claude-opus-5' : process.env.QA_OLLAMA_MODEL ?? '(défaut)'
     trace(`\n🥭 mangoqa — audit de ${opts.dossier}`)
     trace(`   cerveau : ${cerveau} · ${detail}`)
+
+    // PORTÉE — annoncée avant le verdict, au même titre que le cerveau. « Feu vert »
+    // sur trois fichiers modifiés et « feu vert » sur tout un projet ne veulent pas
+    // dire la même chose ; le rapport doit dire lequel des deux il rend.
+    let changedFiles: string[] | undefined
+    if (opts.diff) {
+      changedFiles = fichiersModifies(opts.dossier, opts.diff.ref)
+      const depuis = opts.diff.ref ? `depuis ${opts.diff.ref}` : 'non commité(s)'
+      trace(`   portée  : ${changedFiles.length} fichier(s) ${depuis}`)
+      if (changedFiles.length === 0) {
+        // Distinct d'un dossier vide : ici il n'y a rien À auditer, ce n'est ni un
+        // succès de vérification ni une erreur. On le dit, et on sort en vert.
+        trace('\n  Aucun fichier source modifié — rien à auditer.\n')
+        return EXIT.VERT
+      }
+    } else {
+      trace('   portée  : projet entier')
+    }
+
     rapport = await auditProject(opts.dossier, {
       concurrency: opts.concurrency,
       ...(opts.only ? { only: opts.only } : {}),
+      ...(changedFiles ? { changedFiles } : {}),
       onBranch: opts.silencieux ? undefined : b => trace(ligneBranche(b)),
     })
   } catch (err) {

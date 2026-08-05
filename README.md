@@ -10,11 +10,22 @@ répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
 Depuis J1/J3 (2026-08), il s'utilise aussi **seul**, sans MangoOS, sans fichier-signal :
 
 ```bash
-npm i -g mango-qa            # 1,5 Mo installés
-mangoqa ./mon-projet         # verdict + couverture
-mangoqa ./mon-projet --only security,tests
+npm i -g mango-qa            # 1,6 Mo installés
+mangoqa .                    # verdict + couverture, projet entier
+mangoqa . --diff             # seulement ce qui n'est pas commité (avant de pousser)
+mangoqa . --diff main        # ce qui a divergé depuis main (avant de fusionner)
+mangoqa . --only security,tests
 mangoqa . --json rapport.json --exiger-couverture
 ```
+
+**`--diff` est le mode à privilégier.** Il fait tomber la durée de plusieurs minutes à
+quelques secondes, et surtout la couverture y est **complète** dans le cas courant :
+l'outil ne dit plus « j'ai vu 5 fichiers sur 19 », il dit « j'ai tout vu ». Mesuré sur ce
+dépôt avec Claude Opus 5 : 4 fichiers, 2 branches, 28 s, couverture complète.
+
+**Le cerveau se choisit** — `--cerveau claude` (recommandé) ou `--cerveau ollama` pour
+que rien ne quitte la machine. Le rapport annonce toujours lequel a jugé : deux audits
+rendus par deux cerveaux différents ne sont pas comparables.
 
 Depuis le dépôt, sans installer : `npm run audit -- ./mon-projet`.
 

@@ -73,6 +73,21 @@ export const realFs: FsLike = {
 // ── Lecture bornée des fichiers livrés ───────────────────────────────────────
 const SRC_EXT = /\.(ts|tsx|js|jsx|css|html|json)$/
 
+/** Ce chemin désigne-t-il un fichier que les branches savent auditer ?
+ *
+ *  Exporté pour que `--diff` (git.ts) applique EXACTEMENT le même filtre que le
+ *  parcours disque. Deux définitions de « fichier source » qui divergeraient
+ *  donneraient deux périmètres différents selon le mode — et une couverture
+ *  déclarée sur un périmètre variable ne veut plus rien dire.
+ *
+ *  Écarte aussi les chemins traversant un dossier ignoré (`node_modules`, `dist`…),
+ *  qu'un diff peut parfaitement contenir. */
+export function estFichierSource(relPath: string): boolean {
+  const segments = relPath.split(/[\\/]/)
+  if (segments.some(seg => SKIP_DIRS.has(seg))) return false
+  return SRC_EXT.test(relPath)
+}
+
 /** Parcours récursif borné, chemins seuls (contenu lu séparément par `readProjectFiles`).
  *  Implémenté via le `walkTree` partagé (#R3) — comportement inchangé. */
 export function walkSrc(dir: string, base: string, acc: string[], fsx: FsLike = realFs): void {

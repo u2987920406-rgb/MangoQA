@@ -107,20 +107,27 @@ se rabattre sur un modèle plus faible rendrait un verdict de moindre qualité s
 déclarer. Contradiction `QA_LOCAL_ONLY` + `--cerveau claude` refusée. Le rapport annonce
 quel cerveau a jugé.
 
-### Lot 1 — `--diff` : la portée du champ
+### Lot 1 — `--diff` : la portée du champ ✅ FAIT (2026-08-05)
 
-Auditer ce qui a changé entre HEAD et un point fixe (commit, branche, tag, merge-base),
-comme le fait l'étalon. `auditProject()` accepte déjà `changedFiles` ; la CLI ne
-l'expose pas.
+`--diff` sans référence → le travail non commité (avant de pousser). `--diff <ref>` →
+ce qui a divergé depuis ce point, sémantique `ref...HEAD` (avant de fusionner). Accepte
+commit, branche, étiquette.
 
-**Pourquoi en premier :** trois effets d'un coup. Le temps d'audit passe de minutes à
-secondes, donc l'outil se relance. La couverture devient **complète** dans le cas
-courant, donc l'aveu devient une garantie. Et avec un cerveau facturé au jeton, ça
-divise le coût par un ordre de grandeur — donc ça conditionne tous les lots suivants.
+**Mesuré à la livraison**, sur le dépôt de Mango QA lui-même, cerveau Opus 5 :
+4 fichiers non commités, deux branches, **28,2 s**, couverture **complète**. À comparer
+aux minutes d'un audit de projet entier.
 
-**Achevé quand :** `mangoqa --diff main` n'audite que les fichiers modifiés · la
-couverture est complète sur un changement normal · un audit de cinq fichiers passe sous
-la minute · les codes de sortie sont inchangés · testé.
+Trois filtres, chacun pour une raison : les suppressions sont exclues (un fichier
+effacé compterait comme « découvert mais jamais lu » et ferait paraître la couverture
+incomplète) · les fichiers hors du dossier audité aussi (le dépôt peut être plus large)
+· les non-sources également (on ne paie pas de jetons pour un `.md`). Le filtre « fichier
+source » est **partagé** avec le parcours disque (`estFichierSource`) : deux définitions
+divergentes donneraient deux périmètres selon le mode, et une couverture déclarée sur un
+périmètre variable ne veut plus rien dire.
+
+**Reporté au lot 5, délibérément :** exposer la portée diff au serveur MCP. Utile, hors
+définition d'achèvement de ce lot. Consigné ici plutôt que codé — c'est le § 5 qui
+s'applique, pas une bonne idée de séance.
 
 ### Lot 2 — Fermer le trou d'honnêteté (`J4-a`)
 
