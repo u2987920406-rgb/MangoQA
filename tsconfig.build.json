@@ -1,0 +1,20 @@
+{
+  // Build de DISTRIBUTION — n'émet que `src/`, vers `dist/`.
+  //
+  // Distinct de `tsconfig.json`, qui reste le tsconfig de DÉVELOPPEMENT : celui-là
+  // couvre aussi tests/ et eval/ avec `noEmit`, parce qu'on veut les typechecker sans
+  // jamais les livrer. Les mélanger produirait un paquet contenant le corpus
+  // d'évaluation et les harnais de mesure — plusieurs Mo qui n'ont rien à faire chez
+  // un utilisateur.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["tests/**/*", "eval/**/*", "vitest.config.ts"]
+}

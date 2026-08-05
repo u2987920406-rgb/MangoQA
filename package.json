@@ -1,32 +1,78 @@
 {
   "name": "mango-qa",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
-  "description": "Mango QA — framework d'audit autonome (Audit Fantôme) pour MangoOS. Reconstruit depuis le contrat d'interface mangoqa.ts (2026-06-19).",
+  "description": "Mango QA — auditeur de code autonome. Rend un verdict Feu Vert / Feu Rouge, et déclare toujours ce qu'il n'a PAS lu.",
+  "bin": {
+    "mangoqa": "./dist/cli.js",
+    "mangoqa-mcp": "./dist/mcp.js"
+  },
+  "main": "./dist/audit.js",
+  "types": "./dist/audit.d.ts",
+  "exports": {
+    ".": "./dist/audit.js",
+    "./cli": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "audit": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "watch:supervised": "tsx src/watchdog.ts",
     "typecheck": "tsc --noEmit",
-    "test:manual": "tsx tests/manual/test-disjoncteur-core.ts && tsx tests/manual/test-disjoncteur-circuit.ts && tsx tests/manual/test-disjoncteur-cost.ts && tsx tests/manual/test-disjoncteur-regression.ts && tsx tests/manual/test-disjoncteur-memory.ts && tsx tests/manual/test-disjoncteur-killswitch.ts && tsx tests/manual/test-disjoncteur-runner.ts && tsx tests/manual/test-design-eye.ts && tsx tests/manual/test-flux-eye.ts && tsx tests/manual/test-flux-deep.ts && tsx tests/manual/test-llm.ts && tsx tests/manual/test-suite-eye.ts",
+    "test:manual": "tsx tests/manual/test-disjoncteur-core.ts && tsx tests/manual/test-disjoncteur-circuit.ts && tsx tests/manual/test-disjoncteur-cost.ts && tsx tests/manual/test-disjoncteur-regression.ts && tsx tests/manual/test-disjoncteur-memory.ts && tsx tests/manual/test-disjoncteur-killswitch.ts && tsx tests/manual/test-disjoncteur-runner.ts && tsx tests/manual/test-design-eye.ts && tsx tests/manual/test-flux-eye.ts && tsx tests/manual/test-flux-deep.ts && tsx tests/manual/test-llm.ts && tsx tests/manual/test-suite-eye.ts && tsx tests/manual/test-mcp-stdio.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.173",
     "chokidar": "^3.6.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^17.4.2"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.173",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "tree-sitter-wasms": "^0.1.13",
-    "web-tree-sitter": "^0.24.7"
+    "web-tree-sitter": "^0.24.7",
+    "zod": "^3.25 || ^4.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    },
+    "tree-sitter-wasms": {
+      "optional": true
+    },
+    "web-tree-sitter": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.173",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^25.9.3",
     "@vitest/coverage-v8": "^4.1.10",
+    "tree-sitter-wasms": "^0.1.13",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "web-tree-sitter": "^0.24.7",
+    "zod": "^3.25 || ^4.0"
   }
 }

@@ -15,7 +15,11 @@
 
 import path from 'node:path'
 import type { AuditCoverage, Branch, BranchFinding, PhaseSignal, ProjectFile, QAVerdict } from './types.js'
-import { readProjectFiles, projectHasTests, realFs, type FsLike, type ReadStats } from './orchestrator.js'
+// (2026-08-05, J3) Import direct de `project-files.js`, PAS de `orchestrator.js` : c'est
+// ce qui garde la CLI légère. Passer par l'orchestrateur tirait design-eye, suite-eye,
+// retex et flux-eye/parser → web-tree-sitter (50 Mo de WASM) pour trois fonctions de
+// lecture. L'orchestrateur ré-exporte ce module, donc rien d'autre ne change.
+import { readProjectFiles, projectHasTests, realFs, type FsLike, type ReadStats } from './project-files.js'
 import { buildVerdict } from './verdict.js'
 import { architecture } from './branches/architecture.js'
 import { security } from './branches/security.js'

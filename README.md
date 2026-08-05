@@ -6,10 +6,45 @@ répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
 Depuis J1/J3 (2026-08), il s'utilise aussi **seul**, sans MangoOS, sans fichier-signal :
 
 ```bash
-npm run audit -- ./mon-projet                    # verdict + couverture
-npm run audit -- ./mon-projet --only security,tests
-npm run audit -- . --json rapport.json --exiger-couverture
+npm i -g mango-qa            # 1,5 Mo installés
+mangoqa ./mon-projet         # verdict + couverture
+mangoqa ./mon-projet --only security,tests
+mangoqa . --json rapport.json --exiger-couverture
 ```
+
+Depuis le dépôt, sans installer : `npm run audit -- ./mon-projet`.
+
+### Serveur MCP
+
+Pour donner l'auditeur à un assistant (Claude Code, ou tout client MCP) :
+
+```bash
+npm i -g mango-qa @modelcontextprotocol/sdk zod
+mangoqa-mcp            # transport stdio
+```
+
+Deux outils : `auditer_projet` et `lister_branches`.
+
+> **La couverture est un champ REQUIS du schéma de sortie**, pas une note en bas de
+> page. C'est le cas d'usage le plus exposé au défaut de J1 : un assistant qui lit
+> « FEU VERT » sans savoir que l'audit n'a porté que sur 27 % du code rapporterait à
+> son utilisateur que le projet est sain. Un client qui valide le résultat ne peut
+> pas obtenir un verdict sans son périmètre — c'est structurel, pas documentaire.
+
+### Ce qui n'est PAS installé par défaut
+
+Le cerveau primaire est **Ollama**, joint en HTTP : zéro dépendance. Les paquets lourds
+sont donc des **dépendances de pair optionnelles**, à n'installer que si on s'en sert :
+
+| Paquet | Poids | À quoi il sert |
+|---|---|---|
+| `@anthropic-ai/claude-agent-sdk` | ~280 Mo | Cerveau de **repli** si Ollama est injoignable. Inutile en `QA_LOCAL_ONLY=on` |
+| `web-tree-sitter` + `tree-sitter-wasms` | ~50 Mo | Auditeur de Flux (chemin MangoOS). La CLI ne l'appelle jamais |
+| `@modelcontextprotocol/sdk` + `zod` | ~16 Mo | Serveur MCP seulement |
+
+Sans eux : **1,6 Mo** au lieu de 371. Chacun lève un message qui dit quoi faire, et
+l'Auditeur de Flux se désactive proprement (repli sur ses heuristiques regex) au lieu
+de faire échouer le chargement.
 
 | Code de sortie | Sens |
 |---|---|

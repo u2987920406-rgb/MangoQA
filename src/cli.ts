@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // J3 — CLI de Mango QA : auditer un dossier depuis un terminal, sans MangoOS.
 //
 //     mangoqa <dossier> [options]
@@ -11,7 +12,8 @@
 // dire — c'est très exactement le défaut que J2 a corrigé, et un affichage paresseux
 // suffirait à le réintroduire côté présentation.
 import 'dotenv/config'
-import { writeFileSync } from 'node:fs'
+import { realpathSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { auditProject, ALL_BRANCHES, type AuditReport, type BranchResultLite } from './audit.js'
 
 const VERSION = '2.1.0'
@@ -270,8 +272,29 @@ export async function main(argv: string[]): Promise<number> {
   return code
 }
 
-// Exécution directe (pas d'effet de bord à l'import : la CLI est testable).
-if (process.argv[1] && /cli\.(ts|js)$/.test(process.argv[1])) {
+/** Ce module est-il le POINT D'ENTRÉE, ou juste importé (tests, API) ?
+ *
+ *  (2026-08-05, J3 packaging) L'ancien test — `/cli\.(ts|js)$/` sur `process.argv[1]` —
+ *  aurait cassé À L'INSTALLATION, sans rien casser en développement. `npm i -g` place un
+ *  lien `node_modules/.bin/mangoqa` (et un shim `.cmd` sous Windows) : `argv[1]` vaut
+ *  alors « mangoqa », qui ne finit pas par `cli.js`. La commande se serait terminée en
+ *  silence, code 0, sans auditer quoi que ce soit — le pire mode de panne pour un
+ *  outil dont la promesse est de ne pas se taire.
+ *
+ *  Comparer l'URL du module au chemin RÉEL de l'entrée (realpath : Node résout déjà le
+ *  lien du bin) marche dans les trois cas : `tsx src/cli.ts`, `node dist/cli.js`, et le
+ *  binaire installé. Et reste faux à l'import, ce qui garde la CLI testable. */
+function estPointDEntree(): boolean {
+  const entree = process.argv[1]
+  if (!entree) return false
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entree)).href
+  } catch {
+    return false
+  }
+}
+
+if (estPointDEntree()) {
   main(process.argv.slice(2))
     .then(code => process.exit(code))
     .catch(err => {

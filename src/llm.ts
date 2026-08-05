@@ -8,7 +8,15 @@
 // HTTP en erreur/timeout) — jamais sur une réponse simplement illisible (ça, c'est un
 // problème de FORMAT, pas de DISPONIBILITÉ ; parseFirstJson/auditWithLLM le traitent
 // déjà en fail-open plus bas, sans re-solliciter un second cerveau — axiome 16/17).
-import { query } from '@anthropic-ai/claude-agent-sdk'
+// (2026-08-05, J3 packaging) Import de TYPE seulement — effacé à la compilation. Le SDK
+// est chargé DYNAMIQUEMENT dans askClaude, et déclaré en dépendance de pair OPTIONNELLE.
+//
+// Motif mesuré : `@anthropic-ai/claude-agent-sdk` pèse **280 Mo** installé, à lui seul
+// 79 % du poids de la CLI. Or c'est le cerveau de REPLI : le chemin primaire est Ollama,
+// joint en HTTP sans aucune dépendance. Imposer 280 Mo à quelqu'un qui audite en local
+// contredit frontalement l'argument de souveraineté du produit. Qui veut le repli
+// l'installe ; les autres tournent en `QA_LOCAL_ONLY` et ne le voient jamais.
+import type { query as QueryFn } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, AuditCoverage, BranchFinding, BranchStatus } from './types.js'
 import { askOllama } from './ollama-client.js'
 import { renderFilesWithCoverage } from './fs-shared.js'
@@ -185,8 +193,29 @@ export function redactSecrets(code: string): string {
   return out
 }
 
+/** Charge le SDK Claude à la demande. Lève un message ACTIONNABLE s'il n'est pas
+ *  installé — pas un `ERR_MODULE_NOT_FOUND` brut, qui laisserait l'utilisateur croire
+ *  à un bug de Mango QA plutôt qu'à un paquet optionnel qu'il n'a pas voulu. */
+async function chargerSdkClaude(): Promise<typeof QueryFn> {
+  try {
+    const mod = await import('@anthropic-ai/claude-agent-sdk')
+    return mod.query
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code
+    if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') {
+      throw new Error(
+        "Repli Claude indisponible : @anthropic-ai/claude-agent-sdk n'est pas installé " +
+          '(dépendance optionnelle, ~280 Mo). Deux issues : `npm i @anthropic-ai/claude-agent-sdk` ' +
+          'pour activer le repli, ou `QA_LOCAL_ONLY=on` pour assumer le tout-local.',
+      )
+    }
+    throw err
+  }
+}
+
 /** (system, user) → texte, via l'abonnement Claude Code. Lève en cas d'échec. */
 export async function askClaude(system: string, user: string): Promise<string> {
+  const query = await chargerSdkClaude()
   const env = subscriptionEnv()
   const q = query({
     prompt: user,
