@@ -16,6 +16,8 @@ import { realpathSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { auditProject, ALL_BRANCHES, type AuditReport, type BranchResultLite } from './audit.js'
 import { CERVEAUX, cerveauPrimaire, type Cerveau } from './llm.js'
+import { LIBELLE_CAUSE, estNonVerifie } from './verdict.js'
+import { CerveauInutilisableError } from './preflight.js'
 import { fichiersModifies } from './git.js'
 
 const VERSION = '2.1.0'
@@ -32,6 +34,14 @@ export const EXIT = {
    *  Distinct de ROUGE : aucun défaut n'a été trouvé, on refuse seulement de
    *  traiter « rien vu » comme « rien à signaler ». */
   PARTIEL: 3,
+  /** Au moins une branche BLOQUANTE n'a pas pu JUGER (cerveau hors contrat ou
+   *  injoignable). Il n'y a pas de verdict à rendre — ni vert, ni rouge.
+   *
+   *  (2026-08-05, J4-a) Non désactivable, contrairement à `PARTIEL` : une lecture
+   *  partielle est un mode dégradé légitime qu'on peut assumer, une absence de
+   *  jugement n'est pas un audit. Sortir 0 ici, c'est certifier ce qu'on n'a pas
+   *  vérifié — et en CI, ça passe sans que personne ne le voie. */
+  NON_VERIFIE: 4,
 } as const
 
 const AIDE = `🥭 mangoqa ${VERSION} — audite un dossier de code et rend un verdict.
@@ -53,6 +63,10 @@ OPTIONS
   --cap <n>               Caractères de code max par prompt (défaut 100000).
   --json [fichier]        Rapport machine sur stdout, ou dans <fichier>.
   --exiger-couverture     Sortir en ${EXIT.PARTIEL} si le verdict porte sur une lecture partielle.
+  --sans-preflight        Ne pas vérifier le cerveau avant l'audit (déconseillé :
+                          une panne ne se découvre alors qu'après plusieurs minutes).
+  --sans-conventions      Ne pas lire les règles du dépôt (CLAUDE.md, CONTRIBUTING.md,
+                          AGENTS.md, .editorconfig, .cursorrules…) ni juger contre elles.
   --silencieux            Pas d'affichage progressif (le rapport final seulement).
   -h, --help              Cette aide.
   -v, --version           Version.
@@ -60,6 +74,7 @@ OPTIONS
 CODES DE SORTIE
   ${EXIT.VERT}  Feu Vert          ${EXIT.ROUGE}  Feu Rouge
   ${EXIT.USAGE}  Erreur d'usage    ${EXIT.PARTIEL}  Feu Vert sur lecture partielle (--exiger-couverture)
+  ${EXIT.NON_VERIFIE}  NON VÉRIFIÉ — une branche bloquante n'a pas pu juger (toujours actif)
 
 EXEMPLES
   mangoqa ./mon-projet
@@ -82,6 +97,8 @@ export interface CliOptions {
   json: boolean
   jsonFichier?: string
   exigerCouverture: boolean
+  sansPreflight: boolean
+  sansConventions: boolean
   silencieux: boolean
 }
 
@@ -97,6 +114,8 @@ export function parseArgs(argv: string[]): CliOptions | { aide: string } {
     concurrency: 1,
     json: false,
     exigerCouverture: false,
+    sansPreflight: false,
+    sansConventions: false,
     silencieux: false,
   }
 
@@ -154,6 +173,12 @@ export function parseArgs(argv: string[]): CliOptions | { aide: string } {
         break
       case '--exiger-couverture':
         opts.exigerCouverture = true
+        break
+      case '--sans-preflight':
+        opts.sansPreflight = true
+        break
+      case '--sans-conventions':
+        opts.sansConventions = true
         break
       case '--silencieux':
         opts.silencieux = true
@@ -229,11 +254,60 @@ export function rendreRapport(r: AuditReport): string {
   }
   l.push('')
 
+  // CONVENTIONS — la troisième déclaration : contre QUOI on a jugé. Toujours affichée,
+  // y compris (et surtout) quand le dépôt n'en documente aucune : c'est ce qui empêche
+  // de lire un feu vert comme « conforme à vos règles » alors qu'aucune n'existe.
+  const conv = r.conventions
+  if (conv) {
+    if (conv.absent) {
+      l.push("  CONVENTIONS : aucune documentée dans ce dépôt — jugé sur les seules spécialités.")
+    } else {
+      const cite = conv.cited.length ? ` · ${conv.cited.length} invoquée(s) : ${conv.cited.join(', ')}` : ''
+      l.push(`  CONVENTIONS : ${conv.rulesProvided} règle(s) lue(s) dans ${conv.files.join(', ')}${cite}`)
+      if (conv.rulesDropped > 0) {
+        l.push(`    ⚠️ ${conv.rulesDropped} règle(s) au-delà du cap, non fournies au jugement.`)
+      }
+      // Une citation inventée n'est pas nettoyée en silence : c'est le symptôme (J1-b)
+      // d'un modèle qui affirme un fait que la source contredit, et il doit se voir.
+      if (conv.rejected.length) {
+        l.push(`    ⚠️ Citation(s) REJETÉE(S) — ne correspond à aucune règle réelle : ${conv.rejected.join(', ')}`)
+      }
+    }
+    l.push('')
+  }
+
+  // JUGEMENT — au même rang que la couverture, et pour la même raison. La couverture
+  // dit ce qui a été LU, celui-ci dit ce qui a été JUGÉ. Sur la sonde du 2026-08-05,
+  // la couverture affichait « complète » (elle disait vrai : les fichiers avaient bien
+  // été envoyés) alors qu'aucune branche n'avait rendu de verdict.
+  const jug = r.jugement
+  if (!jug.complet || jug.nonJugees.length > 0) {
+    l.push(jug.complet ? '  JUGEMENT — incomplet (branches de conseil seulement)' : '  JUGEMENT — INCOMPLET')
+    for (const b of jug.nonJugees) {
+      l.push(`    ⚠️ ${b.label}${b.blocking ? '' : ' (conseil)'} : ${LIBELLE_CAUSE[b.cause]}`)
+    }
+    if (!jug.complet) l.push("    → Une branche BLOQUANTE n'a pas jugé : aucun verdict n'est défendable.")
+    l.push('')
+  }
+
   const v = r.verdict
   const reserve = cov.complete ? '' : '  ⚠️ SUR LECTURE PARTIELLE'
+  // Le contrat figé n'a que deux états et `verdict` reste `green` — c'est ce qui
+  // préserve le fail-open vers MangoOS. Mais l'AFFICHER « FEU VERT » alors que rien
+  // n'a été jugé serait le mensonge que ce lot supprime : ici, on ne le dit pas.
+  //
+  // La règle elle-même vit dans `verdict.ts` : la recopier ici, dans MCP et dans le
+  // harnais d'éval garantirait qu'une des trois copies l'oublie un jour.
+  const nonVerifie = estNonVerifie(v.verdict, jug.complet)
+  const ligneVerdict = nonVerifie
+    ? "⚪ NON VÉRIFIÉ — ni vert, ni rouge : l'auditeur n'a pas pu juger"
+    : v.verdict === 'green'
+      ? '🟢 FEU VERT'
+      : '🔴 FEU ROUGE'
+  const reserveJugement = !nonVerifie && !jug.complet ? '  ⚠️ JUGEMENT INCOMPLET' : ''
   l.push(
-    `  VERDICT : ${v.verdict === 'green' ? '🟢 FEU VERT' : '🔴 FEU ROUGE'}` +
-      `${v.rejection ? ` — branche ${v.rejection.branch} (${v.rejection.rejection_id})` : ''}${reserve}`,
+    `  VERDICT : ${ligneVerdict}` +
+      `${v.rejection ? ` — branche ${v.rejection.branch} (${v.rejection.rejection_id})` : ''}${reserve}${reserveJugement}`,
   )
   if (v.rejection) {
     l.push(`  Correctif : « ${v.rejection.corrective_action} »`)
@@ -244,9 +318,16 @@ export function rendreRapport(r: AuditReport): string {
   return l.join('\n')
 }
 
-/** Code de sortie à partir du rapport et des options. Pure — testée sans process. */
+/** Code de sortie à partir du rapport et des options. Pure — testée sans process.
+ *
+ *  L'ORDRE porte la doctrine, il n'est pas arbitraire :
+ *  1. ROUGE d'abord — un défaut trouvé est un fait, aucune panne voisine ne l'annule ;
+ *  2. NON_VERIFIE ensuite — un vert sans jugement n'est pas un vert (J4-a) ;
+ *  3. PARTIEL enfin — un vert jugé mais sur une lecture partielle, si l'appelant
+ *     a demandé qu'on le lui refuse. */
 export function codeSortie(r: AuditReport, exigerCouverture: boolean): number {
   if (r.verdict.verdict === 'red') return EXIT.ROUGE
+  if (estNonVerifie(r.verdict.verdict, r.jugement.complet)) return EXIT.NON_VERIFIE
   if (exigerCouverture && !r.coverage.complete) return EXIT.PARTIEL
   return EXIT.VERT
 }
@@ -265,9 +346,9 @@ export async function main(argv: string[]): Promise<number> {
     return EXIT.USAGE
   }
 
-  // Le cap vit dans l'environnement (llm.ts le lit paresseusement) — on le pose avant
-  // le premier appel, jamais après.
-  if (opts.cap !== undefined) process.env.QA_FILE_PAYLOAD_CAP = String(opts.cap)
+  // Le cap passe par le CONTRAT d'audit (faille L2-a) ; seuls le cerveau et le modèle
+  // restent des réglages de process, parce qu'ils en sont vraiment : ils décrivent la
+  // machine qui juge, pas la demande d'audit.
   if (opts.cerveau !== undefined) process.env.QA_BRAIN = opts.cerveau
   if (opts.modele !== undefined) process.env.QA_MODEL = opts.modele
 
@@ -308,13 +389,22 @@ export async function main(argv: string[]): Promise<number> {
 
     rapport = await auditProject(opts.dossier, {
       concurrency: opts.concurrency,
+      preflight: !opts.sansPreflight,
+      conventions: !opts.sansConventions,
+      ...(opts.cap !== undefined ? { cap: opts.cap } : {}),
       ...(opts.only ? { only: opts.only } : {}),
       ...(changedFiles ? { changedFiles } : {}),
       onBranch: opts.silencieux ? undefined : b => trace(ligneBranche(b)),
     })
   } catch (err) {
-    // auditProject ne throw QUE si le dossier lui-même est inutilisable (fail-open
-    // partout ailleurs) : c'est une erreur d'usage, pas un défaut d'audit.
+    // auditProject ne throw QUE si l'environnement est inutilisable — dossier
+    // introuvable, ou cerveau incapable de rendre un verdict (fail-open partout
+    // ailleurs). Les deux sont des erreurs d'USAGE, corrigeables par l'utilisateur,
+    // jamais un défaut trouvé dans son code : d'où le code 2 et pas un feu rouge.
+    if (err instanceof CerveauInutilisableError) {
+      console.error(`[mangoqa] ⛔ ${err.message}`)
+      return EXIT.USAGE
+    }
     console.error(`[mangoqa] ${err instanceof Error ? err.message : String(err)}`)
     return EXIT.USAGE
   }
@@ -336,6 +426,14 @@ export async function main(argv: string[]): Promise<number> {
     console.error(
       '[mangoqa] Feu Vert refusé : --exiger-couverture est actif et la lecture est partielle.\n' +
         '          Aucun défaut trouvé — mais sur une partie du code seulement.',
+    )
+  }
+  if (code === EXIT.NON_VERIFIE) {
+    const branches = rapport.jugement.nonJugees.filter(b => b.blocking)
+    console.error(
+      `[mangoqa] Feu Vert refusé : ${branches.length} branche(s) bloquante(s) n'ont pas pu juger.\n` +
+        branches.map(b => `          · ${b.label} — ${LIBELLE_CAUSE[b.cause]}`).join('\n') +
+        "\n          Aucun défaut n'a été trouvé, mais rien n'a été vérifié non plus.",
     )
   }
   return code

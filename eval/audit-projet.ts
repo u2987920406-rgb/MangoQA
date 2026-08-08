@@ -6,12 +6,18 @@
 //
 //   tsx eval/audit-projet.ts <dossier> [--cap 24000] [--only performance,tests]
 //
-// C'est aussi le brouillon de la CLI de J3 : mêmes informations, même ordre de
-// lecture. La règle d'affichage tient en une ligne — la COUVERTURE est imprimée
-// AVEC le verdict, jamais après, jamais en note de bas de page.
+// (2026-08-08, lot 3) Ce fichier a longtemps porté sa PROPRE copie du rendu — il était
+// le brouillon de la CLI avant qu'elle existe. La copie a fini par diverger : la CLI a
+// gagné la section CONVENTIONS, pas elle. Défaut trouvé par Mango QA sur son propre
+// diff, deux lots de suite, sur deux fichiers différents — c'est la démonstration que
+// la règle du dépôt (« une source unique ») n'est pas une préférence de style.
+//
+// Le rendu vient donc désormais de `rendreRapport` (src/cli.ts). Ce script ne garde
+// que ce qui lui est propre : l'en-tête de mesure et le journal rejouable.
 import 'dotenv/config'
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { auditProject, type AuditReport } from '../src/audit.js'
+import { auditProject } from '../src/audit.js'
+import { rendreRapport } from '../src/cli.js'
 
 const argv = process.argv.slice(2)
 const flag = (nom: string): string | undefined => {
@@ -28,57 +34,7 @@ const JOURNAL = flag('journal')
 // pouvoir comparer deux régimes de lecture dans la même journée de mesure.
 if (CAP) process.env.QA_FILE_PAYLOAD_CAP = CAP
 
-const pct = (n: number, d: number): string => (d > 0 ? `${Math.round((n / d) * 100)} %` : '—')
 const FEUX: Record<string, string> = { pass: '🟢', fail: '🔴', skip: '⚪' }
-
-/** Le rapport lisible. `couverture` n'est PAS une section optionnelle en bas de page :
- *  elle encadre le verdict, parce qu'un verdict sans son périmètre ne veut rien dire. */
-function rendre(r: AuditReport): string[] {
-  const l: string[] = []
-  l.push('')
-  l.push(`Projet : ${r.projectName}  (${r.projectDir})`)
-  l.push(`Cerveau : ${process.env.QA_OLLAMA_MODEL ?? '(défaut)'}   cap prompt : ${process.env.QA_FILE_PAYLOAD_CAP ?? '100000 (défaut)'} car.`)
-  l.push('')
-
-  for (const b of r.branches) {
-    const c = b.coverage
-    const vu = c ? `${c.filesRendered}/${c.filesTotal} vus` : `${b.filesAudited} fichiers`
-    const alerte = c && !c.complete ? ' ⚠️ PARTIEL' : ''
-    l.push(
-      `  ${FEUX[b.finding.status] ?? '?'} ${b.emoji} ${b.label.padEnd(16)}` +
-        `${(b.durationMs / 1000).toFixed(1)}s  ${vu.padEnd(12)}${alerte}  ${b.finding.summary}`,
-    )
-  }
-
-  l.push('')
-  const cov = r.coverage
-  l.push('  COUVERTURE')
-  l.push(`    Fichiers découverts  : ${cov.filesDiscovered}`)
-  l.push(`    Fichiers lus         : ${cov.filesRead}  (${pct(cov.filesRead, cov.filesDiscovered)})`)
-  if (cov.filesDropped.length) l.push(`    ⚠️ Jamais lus        : ${cov.filesDropped.join(', ')}`)
-  if (cov.filesTruncated.length) l.push(`    ⚠️ Coupés à la lecture : ${cov.filesTruncated.join(', ')}`)
-  for (const b of r.branches) {
-    const c = b.coverage
-    if (!c || c.complete) continue
-    l.push(
-      `    ⚠️ ${b.id} : ${c.filesRendered}/${c.filesTotal} fichiers envoyés au modèle ` +
-        `(${pct(c.charsRendered, c.charsTotal)} du code)` +
-        (c.omitted.length ? ` — non vus : ${c.omitted.join(', ')}` : ''),
-    )
-  }
-  l.push(`    → ${cov.complete ? 'COMPLÈTE : tout le code a été lu et vu.' : 'PARTIELLE : le verdict ci-dessous ne porte PAS sur tout le code.'}`)
-
-  l.push('')
-  const v = r.verdict
-  l.push(`  VERDICT : ${v.verdict === 'green' ? '🟢 FEU VERT' : '🔴 FEU ROUGE'}${v.rejection ? ` — branche ${v.rejection.branch} (${v.rejection.rejection_id})` : ''}${cov.complete ? '' : '  ⚠️ SUR LECTURE PARTIELLE'}`)
-  if (v.rejection) l.push(`  Correctif : « ${v.rejection.corrective_action} »`)
-  if (v.coverage && !v.coverage.complete) {
-    l.push(`  Couverture au verdict : ${v.coverage.partial.map(p => `${p.branch} ${p.filesRendered}/${p.filesTotal}`).join(', ')}`)
-  }
-  l.push(`  Durée totale : ${(r.durationMs / 1000).toFixed(1)}s`)
-  l.push('')
-  return l
-}
 
 const t0 = Date.now()
 console.log(`\n[audit] ${DOSSIER} — branches : ${ONLY?.join(', ') ?? 'les 6'}`)
@@ -94,7 +50,14 @@ const rapport = await auditProject(DOSSIER, {
   },
 })
 
-const lignes = rendre(rapport)
+// En-tête PROPRE au harnais de mesure — ce que la CLI n'a pas à porter : les
+// conditions du run, sans lesquelles un chiffre archivé n'est pas comparable.
+const lignes = [
+  '',
+  `Projet : ${rapport.projectName}  (${rapport.projectDir})`,
+  `Cerveau : ${process.env.QA_OLLAMA_MODEL ?? '(défaut)'}   cap prompt : ${process.env.QA_FILE_PAYLOAD_CAP ?? '100000 (défaut)'} car.`,
+  rendreRapport(rapport),
+]
 console.log(lignes.join('\n'))
 console.log(`[audit] terminé en ${((Date.now() - t0) / 1000).toFixed(1)}s`)
 

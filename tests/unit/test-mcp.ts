@@ -46,6 +46,7 @@ function rapport(over: Partial<AuditReport> = {}): AuditReport {
     branches: [branche()],
     filesScanned: 19,
     coverage: { filesDiscovered: 19, filesRead: 19, filesDropped: [], filesTruncated: [], complete: true },
+    jugement: { complet: true, nonJugees: [] },
     durationMs: 1234,
     empty: false,
     ...over,

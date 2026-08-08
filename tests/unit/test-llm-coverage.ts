@@ -43,6 +43,39 @@ function bigFiles(n: number, chars: number): ProjectFile[] {
   return Array.from({ length: n }, (_, i) => ({ path: `src/f${i}.ts`, content: 'x'.repeat(chars) }))
 }
 
+describe('le cap vient du CONTRAT, plus de l\'environnement (faille L2-a)', () => {
+  it('`ctx.cap` prime sur QA_FILE_PAYLOAD_CAP', async () => {
+    // Le serveur MCP est LONG-VIVANT : quand le cap passait par `process.env`, un seul
+    // appel le fixant imposait sa couverture réduite à tous les suivants, et deux
+    // audits concurrents se corrompaient mutuellement. Un réglage partagé entre deux
+    // audits n'est pas un réglage, c'est une fuite.
+    const precedent = process.env.QA_FILE_PAYLOAD_CAP
+    process.env.QA_FILE_PAYLOAD_CAP = '100000'
+    try {
+      const brain = spyBrain()
+      const f = await auditWithLLM(META, { ...ctxWith(bigFiles(4, 2_000)), cap: 3_000 }, brain.ask)
+      // Cap à 3 000 sur 8 000 caractères : la coupe DOIT avoir lieu malgré l'env à 100 000.
+      expect(f.coverage?.complete).toBe(false)
+      expect(f.coverage?.filesRendered).toBeLessThan(4)
+    } finally {
+      if (precedent === undefined) delete process.env.QA_FILE_PAYLOAD_CAP
+      else process.env.QA_FILE_PAYLOAD_CAP = precedent
+    }
+  })
+
+  it('sans `ctx.cap`, l\'environnement reste le repli — rétrocompatible', async () => {
+    const precedent = process.env.QA_FILE_PAYLOAD_CAP
+    process.env.QA_FILE_PAYLOAD_CAP = '3000'
+    try {
+      const f = await auditWithLLM(META, ctxWith(bigFiles(4, 2_000)), spyBrain().ask)
+      expect(f.coverage?.complete).toBe(false)
+    } finally {
+      if (precedent === undefined) delete process.env.QA_FILE_PAYLOAD_CAP
+      else process.env.QA_FILE_PAYLOAD_CAP = precedent
+    }
+  })
+})
+
 describe('auditWithLLM — couverture déclarée', () => {
   describe('1. le prompt dit au modèle ce qu\'il ne voit PAS', () => {
     it('lecture partielle → le prompt annonce le ratio ET interdit le raisonnement par absence', async () => {

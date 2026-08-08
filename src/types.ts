@@ -5,6 +5,11 @@
 // la forme : MangoOS écrit phase-complete.json selon PhaseSignal et lit
 // audit-verdict.json selon QAVerdict. Tout le reste est interne à Mango QA.
 
+// Import de TYPE seulement (effacé à la compilation) : `conventions.ts` dépend de
+// `project-files.ts` qui dépend de ce fichier. Le cycle n'existe donc qu'au niveau des
+// types, jamais à l'exécution.
+import type { ConventionsScan } from './conventions.js'
+
 /** Signal émis par MangoOS après chaque commit de phase
  *  (mangoqa.ts → emitPhaseComplete). Écrit dans <projet>/.mangoqa/phase-complete.json */
 export interface PhaseSignal {
@@ -47,6 +52,58 @@ export interface VerdictCoverage {
   partial: Array<{ branch: string; filesRendered: number; filesTotal: number }>
 }
 
+/** Pourquoi une branche a rendu `skip`. Toutes les abstentions ne se valent pas —
+ *  les confondre est le défaut J4-a (un cerveau muet produisait un Feu Vert).
+ *
+ *  Deux familles, et c'est la seule distinction qui compte :
+ *  • un JUGEMENT a eu lieu (`hors-perimetre`, `juge-sans-avis`) — rien à signaler ;
+ *  • aucun jugement n'a eu lieu (`reponse-illisible`, `cerveau-injoignable`) — une
+ *    PANNE de l'auditeur, qui ne doit jamais ressembler à « rien à signaler ».
+ *
+ *  « Le produit distinguait déjà "n'a pas LU" de "a lu et n'a rien trouvé".
+ *    Il lui manquait "n'a pas JUGÉ" contre "a jugé et n'a rien trouvé". » */
+export type CauseAbstention =
+  /** `relevant()` n'a retenu aucun fichier : la branche n'avait rien à regarder.
+   *  NON-ÉVÉNEMENT — ni un mérite, ni une panne. */
+  | 'hors-perimetre'
+  /** Le cerveau a répondu dans le contrat et a lui-même choisi `skip` (« pas ma
+   *  spécialité »). C'est un jugement RENDU, il ne masque aucune panne. */
+  | 'juge-sans-avis'
+  /** Le cerveau a répondu, mais hors contrat : aucun JSON exploitable. PANNE. */
+  | 'reponse-illisible'
+  /** Le cerveau n'a pas répondu du tout (injoignable, timeout, erreur). PANNE. */
+  | 'cerveau-injoignable'
+  /** `skip` produit sans motif déclaré (producteur non mis à jour). Traité comme une
+   *  PANNE : inventer un motif serait pire que dire qu'on ne le connaît pas. */
+  | 'cause-inconnue'
+
+/** Le motif d'un `skip`, porté par le finding. Présent UNIQUEMENT si `status === 'skip'`.
+ *  Le prédicat qui tranche panne / jugement vit dans `verdict.ts` (`estPanne`). */
+export interface Abstention {
+  cause: CauseAbstention
+  /** Message technique brut (erreur, extrait de réponse) — pour le diagnostic, jamais
+   *  pour la décision. */
+  detail?: string
+}
+
+/** Abstentions agrégées d'un verdict — quelles branches n'ont pas PU juger.
+ *
+ *  (2026-08-05, J4-a) Ajout STRICTEMENT ADDITIF, calqué sur `VerdictCoverage` :
+ *  `verdict` reste `'green' | 'red'`. Un lecteur qui ignore ce champ retrouve
+ *  exactement le comportement d'avant — c'est ce qui préserve le fail-open de
+ *  l'intégration MangoOS : une panne de Mango QA ne bloque toujours pas la
+ *  production. Ce qui change, c'est qu'elle ne peut plus passer pour un succès :
+ *  le champ la porte, et la mention est recopiée EN CLAIR dans le résumé de chaque
+ *  branche concernée pour qu'aucun affichage non mis à jour ne l'efface. */
+export interface VerdictAbstentions {
+  /** Vrai si toutes les branches BLOQUANTES ont effectivement rendu un jugement.
+   *  Faux dès qu'une seule n'a pas pu juger. */
+  jugementComplet: boolean
+  /** Les branches qui n'ont PAS PU juger (pannes seulement — les branches hors
+   *  périmètre et les `skip` assumés par le juge n'y figurent pas). */
+  nonJugees: Array<{ branch: string; cause: CauseAbstention; blocking: boolean }>
+}
+
 /** Verdict lu par MangoOS (mangoqa.ts → QAVerdict). CONTRAT FIGÉ. */
 export interface QAVerdict {
   verdict: 'green' | 'red'
@@ -54,6 +111,9 @@ export interface QAVerdict {
   branches: Record<string, BranchSummary>
   /** Ajout additif 2026-08-05 — voir `VerdictCoverage`. `undefined` = non mesurée. */
   coverage?: VerdictCoverage
+  /** Ajout additif 2026-08-05 (J4-a) — voir `VerdictAbstentions`. `undefined` = aucune
+   *  branche n'a abstenu (le cas courant), donc rien à déclarer. */
+  abstentions?: VerdictAbstentions
 }
 
 // ── Types internes Mango QA ──────────────────────────────────────────────────
@@ -83,6 +143,19 @@ export interface AuditContext {
    *  `undefined` si non calculé (rétrocompat des appelants qui ne le fournissent
    *  pas). Sert à la branche Tests à éviter un Feu Rouge fantôme. */
   testsElsewhereInProject?: boolean
+  /** Plafond de caractères de code injectés dans le prompt de CETTE branche.
+   *
+   *  (2026-08-08, faille L2-a) Il passait par `process.env.QA_FILE_PAYLOAD_CAP`, écrit
+   *  par trois appelants. Sans conséquence pour une CLI — un process, un audit — mais
+   *  le serveur MCP est LONG-VIVANT : un seul appel passant `cap` imposait sa couverture
+   *  réduite à tous les suivants, et deux audits concurrents se corrompaient l'un
+   *  l'autre. `undefined` → repli sur l'environnement (rétrocompatible). */
+  cap?: number
+  /** (2026-08-08, lot 3) Les règles que CE dépôt a écrites, localisées. `undefined` =
+   *  non scanné (le chemin MangoOS ne le fournit pas) → prompt byte-identique à avant.
+   *  Un scan présent mais `absent: true` est une information DIFFÉRENTE : le projet a
+   *  été regardé et ne documente rien, ce qu'on dit au modèle pour qu'il n'invente pas. */
+  conventions?: ConventionsScan
 }
 
 /** Ce que le modèle a RÉELLEMENT vu, mesuré au moment du rendu du prompt
@@ -126,6 +199,26 @@ export interface BranchFinding {
   /** Couverture de lecture de CETTE branche. `undefined` = branche non-LLM ou
    *  couverture non mesurée (ne jamais lire ça comme « couverture complète »). */
   coverage?: AuditCoverage
+  /** Pourquoi ce `skip`. Renseigné par tout producteur de `skip`. `undefined` sur un
+   *  `skip` = cause inconnue, donc traitée comme une PANNE (voir `estPanne`) : c'est
+   *  le sens prudent, celui qui ne peut pas fabriquer un faux Feu Vert. */
+  abstention?: Abstention
+  /** (2026-08-08, lot 3) Les règles du dépôt que cette trouvaille invoque. */
+  conventions?: CitationsConventions
+}
+
+/** Ce que le modèle a cité comme règle du dépôt, **après vérification**.
+ *
+ *  Une citation n'est retenue que si son identifiant correspond à une règle réellement
+ *  extraite d'un fichier du dépôt. Le reste part dans `rejetees` — et y reste visible.
+ *  Effacer une citation inventée reviendrait à corriger la copie du modèle en silence :
+ *  c'est le symptôme (J1-b) qu'il affirme un fait que la source contredit, et ce
+ *  symptôme mérite d'être vu, pas nettoyé. */
+export interface CitationsConventions {
+  /** Identifiants `fichier:ligne` vérifiés — ils désignent une vraie ligne du dépôt. */
+  citees: string[]
+  /** Citations qui ne correspondent à aucune règle extraite : inventées ou déformées. */
+  rejetees: string[]
 }
 
 /** Une branche d'audit (Junior Inspecteur spécialisé). */

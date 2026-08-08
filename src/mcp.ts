@@ -21,6 +21,8 @@ import 'dotenv/config'
 import { realpathSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { auditProject, ALL_BRANCHES, type AuditReport } from './audit.js'
+import { LIBELLE_CAUSE, estNonVerifie } from './verdict.js'
+import { CerveauInutilisableError } from './preflight.js'
 
 const VERSION = '2.1.0'
 
@@ -78,8 +80,53 @@ export function rendreTexteMcp(r: AuditReport): string {
     l.push("   Ne conclus pas à l'absence d'un défaut à partir de cet audit.")
   }
 
+  // CONVENTIONS — contre quoi le jugement a été rendu. Le cas « aucune » compte autant
+  // que l'autre : sans lui, un assistant conclut volontiers « conforme aux conventions
+  // du projet » alors que le projet n'en a jamais écrit une seule.
+  const conv = r.conventions
+  if (conv) {
+    l.push('')
+    if (conv.absent) {
+      l.push(
+        "CONVENTIONS : ce dépôt n'en documente aucune. Le verdict porte sur les seules spécialités " +
+          "de Mango QA — ne le présente pas comme une conformité aux règles du projet.",
+      )
+    } else {
+      l.push(`CONVENTIONS : ${conv.rulesProvided} règle(s) lue(s) dans ${conv.files.join(', ')}.`)
+      if (conv.cited.length) l.push(`   Invoquée(s) par une trouvaille : ${conv.cited.join(', ')}`)
+      if (conv.rejected.length) {
+        l.push(`   ⚠️ Citation(s) rejetée(s), sans correspondance réelle : ${conv.rejected.join(', ')}`)
+      }
+      l.push(
+        '   Ces règles ont été FOURNIES au jugement — une règle non citée peut avoir été vérifiée ' +
+          'et respectée. Ne présente pas cette liste comme « les seules règles vérifiées ».',
+      )
+    }
+  }
+
+  // JUGEMENT — même rang que la couverture. C'est ici que le risque est le plus grand :
+  // un assistant qui lit « FEU VERT » alors qu'aucune branche n'a jugé rapportera à son
+  // utilisateur que le projet est sain. Le texte doit rendre cette lecture impossible.
+  const jug = r.jugement
+  const nonVerifie = estNonVerifie(r.verdict.verdict, jug.complet)
+  if (jug.nonJugees.length > 0) {
+    l.push('')
+    l.push("⚠️ JUGEMENT INCOMPLET — des branches n'ont pas PU juger (panne de l'auditeur, pas absence de défaut) :")
+    for (const b of jug.nonJugees) {
+      l.push(`   ${b.id}${b.blocking ? '' : ' (conseil)'} : ${LIBELLE_CAUSE[b.cause]}`)
+    }
+  }
+
   l.push('')
-  l.push(`VERDICT : ${r.verdict.verdict === 'green' ? 'FEU VERT' : 'FEU ROUGE'}${cov.complete ? '' : ' (SUR LECTURE PARTIELLE)'}`)
+  // Un feu ROUGE reste rouge : un défaut trouvé est un fait que le silence d'une
+  // branche voisine n'annule pas. Seul le VERT se dégrade — c'est lui qui affirme
+  // une absence.
+  l.push(
+    nonVerifie
+      ? "VERDICT : NON VÉRIFIÉ — ni vert, ni rouge. L'auditeur n'a pas pu juger : ne rapporte PAS ce projet comme sain, " +
+          "et n'agis pas comme si aucun défaut n'existait."
+      : `VERDICT : ${r.verdict.verdict === 'green' ? 'FEU VERT' : 'FEU ROUGE'}${cov.complete ? '' : ' (SUR LECTURE PARTIELLE)'}${jug.complet ? '' : ' (JUGEMENT INCOMPLET)'}`,
+  )
   if (r.verdict.rejection) {
     l.push(`Branche en échec : ${r.verdict.rejection.branch} (${r.verdict.rejection.rejection_id})`)
     l.push(`Correctif : ${r.verdict.rejection.corrective_action}`)
@@ -102,6 +149,28 @@ export function rendreStructureMcp(r: AuditReport): Record<string, unknown> {
   return {
     verdict: r.verdict.verdict,
     couvertureComplete: r.coverage.complete,
+    // Requis au même titre que `couvertureComplete` : un client qui désérialise ne
+    // peut pas obtenir un verdict sans savoir s'il a été rendu.
+    jugementComplet: r.jugement.complet,
+    jugement: {
+      complet: r.jugement.complet,
+      branchesNonJugees: r.jugement.nonJugees.map(b => ({
+        branche: b.id,
+        cause: b.cause,
+        raison: LIBELLE_CAUSE[b.cause],
+        bloquante: b.blocking,
+      })),
+    },
+    conventions: r.conventions
+      ? {
+          documentees: !r.conventions.absent,
+          fichiers: r.conventions.files,
+          reglesFournies: r.conventions.rulesProvided,
+          reglesEcartees: r.conventions.rulesDropped,
+          reglesInvoquees: r.conventions.cited,
+          citationsRejetees: r.conventions.rejected,
+        }
+      : null,
     couverture: {
       complete: r.coverage.complete,
       fichiersDecouverts: r.coverage.filesDiscovered,
@@ -181,6 +250,42 @@ export async function creerServeur() {
         verdict: z.enum(['green', 'red']),
         // Requis, pas optionnel : c'est tout l'objet de J2.
         couvertureComplete: z.boolean().describe("Faux = le verdict ne porte pas sur tout le code."),
+        // Requis pour la même raison, un cran plus haut : c'est l'objet de J4-a.
+        jugementComplet: z
+          .boolean()
+          .describe(
+            "Faux = une branche bloquante n'a PAS PU juger (cerveau hors contrat ou injoignable). " +
+              "Un verdict 'green' avec jugementComplet=false ne signifie PAS que le code est sain : " +
+              "il signifie qu'aucune vérification n'a eu lieu. Ne le rapporte jamais comme un succès.",
+          ),
+        jugement: z.object({
+          complet: z.boolean(),
+          branchesNonJugees: z.array(
+            z.object({
+              branche: z.string(),
+              cause: z.string(),
+              raison: z.string(),
+              bloquante: z.boolean(),
+            }),
+          ),
+        }),
+        conventions: z
+          .object({
+            documentees: z
+              .boolean()
+              .describe(
+                "Faux = ce dépôt n'écrit AUCUNE règle. Ne rapporte alors jamais un verdict comme " +
+                  "une conformité aux conventions du projet : il n'y en a pas.",
+              ),
+            fichiers: z.array(z.string()),
+            reglesFournies: z.number().describe('Règles soumises au jugement — PAS « règles vérifiées ».'),
+            reglesEcartees: z.number(),
+            reglesInvoquees: z.array(z.string()).describe('Identifiants fichier:ligne cités par une trouvaille.'),
+            citationsRejetees: z
+              .array(z.string())
+              .describe("Règles citées par le modèle qui n'existent pas dans le dépôt — signal d'hallucination."),
+          })
+          .nullable(),
         couverture: z.object({
           complete: z.boolean(),
           fichiersDecouverts: z.number(),
@@ -223,10 +328,14 @@ export async function creerServeur() {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ dossier, only, cap, concurrency }) => {
-      if (cap !== undefined) process.env.QA_FILE_PAYLOAD_CAP = String(cap)
+      // (2026-08-08, faille L2-a CLOSE) Le `cap` est un PARAMÈTRE de cet appel, plus une
+      // écriture dans l'environnement du process. Ce serveur est long-vivant : un seul
+      // appel passant `cap` imposait auparavant sa couverture réduite à tous les
+      // suivants, et deux audits concurrents se corrompaient mutuellement.
       try {
         const rapport = await auditProject(dossier, {
           concurrency: concurrency ?? 1,
+          ...(cap !== undefined ? { cap } : {}),
           ...(only?.length ? { only } : {}),
         })
         return {
@@ -234,12 +343,20 @@ export async function creerServeur() {
           structuredContent: rendreStructureMcp(rapport),
         }
       } catch (err) {
-        // `auditProject` ne lève que si le dossier est inutilisable (fail-open
-        // partout ailleurs). C'est une erreur d'USAGE, pas un défaut d'audit —
-        // le modèle doit pouvoir corriger le chemin et réessayer.
+        // `auditProject` ne lève que si l'ENVIRONNEMENT est inutilisable : dossier
+        // introuvable, ou cerveau incapable de rendre un verdict (fail-open partout
+        // ailleurs). Erreur d'USAGE, pas un défaut d'audit — et surtout pas un
+        // résultat : `isError` empêche le modèle de la lire comme « rien trouvé ».
+        const cerveauMort = err instanceof CerveauInutilisableError
+        const message = err instanceof Error ? err.message : String(err)
         return {
           content: [
-            { type: 'text' as const, text: `Audit impossible : ${err instanceof Error ? err.message : String(err)}` },
+            {
+              type: 'text' as const,
+              text: cerveauMort
+                ? `Audit NON LANCÉ — ${message}\nNe conclus rien sur ce projet : il n'a pas été audité.`
+                : `Audit impossible : ${message}`,
+            },
           ],
           isError: true,
         }

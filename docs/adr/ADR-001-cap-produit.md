@@ -129,28 +129,85 @@ périmètre variable ne veut plus rien dire.
 définition d'achèvement de ce lot. Consigné ici plutôt que codé — c'est le § 5 qui
 s'applique, pas une bonne idée de séance.
 
-### Lot 2 — Fermer le trou d'honnêteté (`J4-a`)
+### Lot 2 — Fermer le trou d'honnêteté (`J4-a`) ✅ FAIT (2026-08-08)
 
-Aujourd'hui, un cerveau qui répond sans tenir le contrat JSON fait tomber les six
-branches en `skip`, et Mango QA rend **feu vert, couverture complète, code 0** — sur du
-code contenant un vrai défaut. Vérifié en sonde le 2026-08-05.
+Un cerveau qui répondait sans tenir le contrat JSON faisait tomber les six branches en
+`skip`, et Mango QA rendait **feu vert, couverture complète, code 0** — sur du code
+contenant un vrai défaut. Vérifié en sonde le 2026-08-05.
 
-Deux volets : un **préflight** du cerveau avant l'audit (il existe dans
-`eval/run-eval.ts`, absent de la CLI/API/MCP) ; et la remontée des **abstentions** dans
-le verdict et le code de sortie, exactement comme la couverture.
+Les deux volets sont livrés, et aucun ne remplace l'autre : le **préflight**
+(`src/preflight.ts`, câblé API + CLI + MCP) coupe court avant de dépenser un audit
+entier ; la remontée des **abstentions** couvre la dégradation en cours de run, que le
+préflight ne peut pas voir.
 
-**Achevé quand :** un cerveau incapable de tenir le contrat ne peut plus produire de feu
-vert · le rapport distingue « a jugé et n'a rien trouvé » de « n'a pas pu juger » · le
-code de sortie le distingue aussi · testé par la sonde qui a révélé le défaut.
+**Mesuré à la livraison**, cerveau injoignable sur `src/` (41 fichiers) : `🟢 FEU VERT`
+code **0** avant, `⚪ NON VÉRIFIÉ` code **4** après — et **5,2 s** pour le savoir au lieu
+d'un audit complet. Le contrat figé n'a pas bougé (`verdict` reste `green`, fail-open
+préservé) : ce sont la présentation et le code de sortie qui cessent de certifier.
 
-### Lot 3 — Conventions du dépôt (axe *Standards*)
+Chaque `skip` porte sa cause, en deux familles — jugement rendu (`hors-perimetre`,
+`juge-sans-avis`) contre panne de l'auditeur (`reponse-illisible`,
+`cerveau-injoignable`, `cause-inconnue`). Seule une panne sur branche **bloquante**
+interdit le vert. Et `estPanne(undefined) === true` : comme `coverage.complete`,
+l'optimisme n'est jamais la valeur par défaut.
 
-Lire les règles documentées du projet (`CLAUDE.md`, `CONTRIBUTING.md`, `AGENTS.md`,
-règles d'éditeur) et juger contre elles, pas seulement contre des spécialités figées
-dans le code. Chaque trouvaille **cite la ligne** de la convention invoquée.
+`EXIT.NON_VERIFIE = 4` n'est **pas** désactivable, contrairement à `--exiger-couverture` :
+une lecture partielle est un mode dégradé légitime, une absence de jugement n'est pas un
+audit. Un **ROUGE reste rouge** — un défaut trouvé est un fait que le silence d'une
+branche voisine n'annule pas.
 
-**Achevé quand :** une trouvaille référence un fichier et une ligne du dépôt · un projet
-sans conventions documentées le déclare au lieu d'inventer.
+Le lot s'est fait auditer par le produit et **recalé deux fois** : la règle de dégradation
+recopiée dans trois surfaces (corrigé — `estNonVerifie()` vit dans `verdict.ts`), et une
+fuite d'état entre appels MCP, préexistante et sans rapport avec le lot (bornée par
+`try/finally`, fond consigné dans `FAILLES.md`). Détail complet :
+`eval/rapports/LOT2-HONNETETE.md`.
+
+**Limite honnête :** le volet 2 a été vérifié en réel avec un cerveau *injoignable*,
+jamais avec un modèle installé répondant *hors contrat* — aucun de ce profil n'est
+disponible sur la machine. Cette cause est couverte à la couture de production par la
+sonde (`tests/unit/test-abstention.ts`, 17 tests), pas par un run contre un vrai modèle
+incompatible.
+
+### Lot 3 — Conventions du dépôt (axe *Standards*) ✅ FAIT (2026-08-08)
+
+`src/conventions.ts` lit les règles écrites par le projet (`CLAUDE.md`, `AGENTS.md`,
+`CONTRIBUTING.md`, `CONVENTIONS.md`, `STYLEGUIDE.md`, `.cursorrules`, `.windsurfrules`,
+`.editorconfig`, `.github/copilot-instructions.md`, `.cursor/rules/*`) — **déterministe,
+zéro LLM** : il ne comprend pas les règles, il les **localise**. Chaque règle sort avec
+son identifiant `fichier:ligne`, ce qui rend la citation vérifiable et la trouvaille
+réfutable.
+
+Le scan **remonte jusqu'à la racine du dépôt** (4 parents max, arrêt sur `.git`) : sans
+ça, `mangoqa ./src` aurait déclaré « aucune convention documentée » sur un dépôt qui en
+écrit trente — une absence affirmée sans avoir été vérifiée, exactement la famille de
+mensonge que les lots 2 et 3 suppriment.
+
+**Chaque citation est vérifiée** contre les règles réellement extraites. Une citation qui
+ne se résout pas est écartée du crédit de la trouvaille **et reste visible** : effacer
+une règle inventée reviendrait à corriger la copie du modèle en silence, alors que c'est
+le symptôme de J1-b (affirmer un fait que la source contredit).
+
+**Mesuré à la livraison** : 34 règles lues dans `../../CLAUDE.md` depuis
+`MangoOS/server/src` (la remontée fonctionne), **zéro citée et zéro inventée** sur un feu
+rouge d'architecture fondé — le bon comportement, sous la charge la plus propice à
+l'invention. Mango QA lui-même ne documente aucune convention et le déclare.
+
+Le lot s'est fait auditer par le produit et **recaler deux fois** : la copie du rendu de
+`eval/audit-projet.ts` avait divergé (même classe de défaut qu'au lot 2, sur un autre
+fichier — corrigé par import de `rendreRapport`), et la faille **L2-a** est remontée
+telle quelle. **L2-a a été fermée sur le fond** bien qu'elle n'appartienne pas à ce lot :
+une faille enregistrée se corrige, une fonctionnalité attend son lot — c'est la dérive
+que le § 5 refuse, pas la réparation. `cap` est passé au contrat (`AuditOptions` →
+`AuditContext`), l'environnement n'est plus qu'un repli. Après correction : `🟢 FEU
+VERT`, code 0, **23,8 s**. `tsc` propre, **291 tests verts** (27 neufs). Détail :
+`eval/rapports/LOT3-CONVENTIONS.md`.
+
+**Limite honnête :** aucun dépôt de cette machine ne documente de vraies conventions **de
+code** — celles de MangoOS sont des instructions d'agent. Le critère « une trouvaille
+référence un fichier et une ligne » est donc prouvé de bout en bout sur un dépôt
+temporaire réel avec un cerveau injecté, jamais avec un vrai modèle sur un vrai dépôt à
+conventions de code. Le mécanisme est prouvé, sa **valeur** ne l'est pas. À mesurer au
+lot 6, sur un dépôt tiers.
 
 ### Lot 4 — Axe *Spec*
 

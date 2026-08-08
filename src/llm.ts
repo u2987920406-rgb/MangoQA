@@ -33,9 +33,10 @@
 // contredit frontalement l'argument de souveraineté du produit. Qui veut le repli
 // l'installe ; les autres tournent en `QA_LOCAL_ONLY` et ne le voient jamais.
 import type { query as QueryFn } from '@anthropic-ai/claude-agent-sdk'
-import type { AuditContext, AuditCoverage, BranchFinding, BranchStatus } from './types.js'
+import type { AuditContext, AuditCoverage, BranchFinding, BranchStatus, CitationsConventions } from './types.js'
 import { askOllama } from './ollama-client.js'
 import { renderFilesWithCoverage } from './fs-shared.js'
+import { conventionsBlock, indexer } from './conventions.js'
 
 /** Modèle Claude utilisé, en primaire comme en repli. Lecture PARESSEUSE : un
  *  appelant (CLI, test, harnais) doit pouvoir le fixer avant le premier usage. */
@@ -319,7 +320,8 @@ Réponds UNIQUEMENT par un objet JSON valide, sans aucun texte autour :
   "summary": "<une phrase courte en français>",
   "rejectionId": "<identifiant-court-kebab si fail, ex: missing-form-label>",
   "correctiveAction": "<action corrective CHIRURGICALE et précise si fail>",
-  "ruleRef": "<référence de règle si fail, ex: WCAG 2.2 1.3.1>"
+  "ruleRef": "<référence de règle si fail, ex: WCAG 2.2 1.3.1>",
+  "conventionRefs": ["<identifiants [fichier:ligne] des conventions du dépôt invoquées, [] sinon>"]
 }
 Règles de décision (scepticisme méthodique, raisonnement par falsification) :
 - "skip" si la phase ne concerne pas ta spécialité (aucun élément pertinent à auditer).
@@ -405,7 +407,11 @@ export async function auditWithLLM(
   ask: (system: string, user: string) => Promise<string> = askLLM,
 ): Promise<BranchFinding> {
   if (ctx.files.length === 0) {
-    return { status: 'skip', summary: 'Aucun fichier pertinent pour cette branche.' }
+    return {
+      status: 'skip',
+      summary: 'Aucun fichier pertinent pour cette branche.',
+      abstention: { cause: 'hors-perimetre' },
+    }
   }
   const adviceClause = meta.adviceOnly
     ? '\nIMPORTANT : tu donnes des CONSEILS, tu ne bloques jamais. N\'utilise que "pass" (avec tes suggestions dans summary) ou "skip", JAMAIS "fail".'
@@ -422,11 +428,14 @@ export async function auditWithLLM(
         ? "\n\nSignal projet (hors delta) : des fichiers de test (*.test.*/*.spec.*) EXISTENT ailleurs dans ce projet. Ne conclus PAS à une absence totale de tests sur la seule base de ce delta — juge seulement si LA LOGIQUE LIVRÉE ICI aurait dû être testée."
         : "\n\nSignal projet (hors delta) : aucun fichier de test (*.test.*/*.spec.*) n'existe nulle part dans ce projet."
       : ''
+  // Le cap vient du CONTRAT d'audit quand l'appelant le fournit ; l'environnement n'est
+  // plus qu'un repli (faille L2-a — un réglage global partagé entre deux audits
+  // concurrents n'est pas un réglage, c'est une fuite).
   const { text: payload, coverage } = renderFilesWithCoverage(
     ctx.files.map(f => ({ ...f, content: redactSecrets(f.content) })),
-    filePayloadCap(),
+    ctx.cap ?? filePayloadCap(),
   )
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}${coverageBlock(coverage)}\n\nFichiers livrés à auditer :\n${payload}`
+  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}${conventionsBlock(ctx.conventions)}${coverageBlock(coverage)}\n\nFichiers livrés à auditer :\n${payload}`
 
   try {
     const raw = await ask(system, user)
@@ -436,8 +445,20 @@ export async function auditWithLLM(
       rejectionId?: string
       correctiveAction?: string
       ruleRef?: string
+      conventionRefs?: unknown
     }>(raw)
-    if (!parsed) return { status: 'skip', summary: 'Réponse d\'audit illisible (ignorée).', coverage }
+    // (2026-08-05, J4-a) Le cerveau a RÉPONDU, mais hors contrat. C'est une PANNE de
+    // l'auditeur, pas un jugement : le déclarer comme tel est tout l'objet du lot 2.
+    // Sans `abstention`, ce `skip` était indiscernable d'un « rien à signaler » et
+    // six branches dans cet état rendaient un Feu Vert, code 0, sur du code fautif.
+    if (!parsed) {
+      return {
+        status: 'skip',
+        summary: "Réponse d'audit illisible : le cerveau n'a pas tenu le contrat JSON.",
+        coverage,
+        abstention: { cause: 'reponse-illisible', detail: apercu(raw) },
+      }
+    }
 
     let status = (parsed.status ?? 'pass').toLowerCase() as BranchStatus
     if (!['pass', 'fail', 'skip'].includes(status)) status = 'pass'
@@ -449,6 +470,15 @@ export async function auditWithLLM(
       summary: (parsed.summary ?? '').trim() || (status === 'pass' ? 'Conforme.' : 'Sans détail.'),
       coverage,
     }
+    // Un `skip` CHOISI par le juge dans un JSON valide reste un jugement rendu — il ne
+    // masque aucune panne, et le compter comme telle rendrait l'alarme inaudible.
+    if (status === 'skip') finding.abstention = { cause: 'juge-sans-avis' }
+
+    // (2026-08-08, lot 3) Les citations de conventions sont VÉRIFIÉES contre les règles
+    // réellement extraites du dépôt. Un identifiant qui ne s'y trouve pas est écarté du
+    // crédit de la trouvaille — et conservé, visible, dans `rejetees`.
+    const citations = verifierCitations(parsed.conventionRefs, ctx)
+    if (citations) finding.conventions = citations
     if (status === 'fail') {
       finding.rejectionId = (parsed.rejectionId ?? `${meta.id}-anomalie`).trim()
       finding.correctiveAction = (parsed.correctiveAction ?? finding.summary).trim()
@@ -456,10 +486,55 @@ export async function auditWithLLM(
     }
     return finding
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
     return {
       status: 'skip',
-      summary: `Audit ignoré (erreur interne : ${err instanceof Error ? err.message : String(err)}).`,
+      summary: `Audit impossible : le cerveau n'a pas répondu (${message}).`,
       coverage,
+      abstention: { cause: 'cerveau-injoignable', detail: message },
     }
   }
+}
+
+/** Trie les identifiants de conventions cités par le modèle en VÉRIFIÉS / REJETÉS.
+ *
+ *  C'est le point de tout le lot 3. Une trouvaille du genre « ne respecte pas vos
+ *  conventions » n'a de valeur que si l'utilisateur peut ouvrir le fichier à la ligne
+ *  citée et constater lui-même. Un identifiant qui ne correspond à aucune règle
+ *  extraite signe l'un des deux : une règle inventée, ou une ligne mal recopiée. Dans
+ *  les deux cas la citation ne prouve rien, donc elle ne compte pas.
+ *
+ *  Rendre `undefined` quand il n'y a rien à dire garde le champ absent du JSON —
+ *  aucun bruit sur les millions de trouvailles qui n'invoquent aucune convention. */
+export function verifierCitations(
+  brut: unknown,
+  ctx: Pick<AuditContext, 'conventions'>,
+): CitationsConventions | undefined {
+  if (!Array.isArray(brut) || brut.length === 0) return undefined
+  const connues = indexer(ctx.conventions?.rules ?? [])
+  const citees: string[] = []
+  const rejetees: string[] = []
+  for (const item of brut) {
+    if (typeof item !== 'string') continue
+    // Tolérance de FORME uniquement : le modèle écrit souvent `[CLAUDE.md:42]` avec ses
+    // crochets, tels qu'ils apparaissent dans le prompt. Ce n'est pas une invention, il
+    // recopie ce qu'on lui a montré. Le FOND, lui, n'est pas négocié.
+    const id = item.trim().replace(/^\[|\]$/g, '').trim()
+    if (!id) continue
+    if (connues.has(id)) {
+      if (!citees.includes(id)) citees.push(id)
+    } else if (!rejetees.includes(id)) {
+      rejetees.push(id)
+    }
+  }
+  if (citees.length === 0 && rejetees.length === 0) return undefined
+  return { citees, rejetees }
+}
+
+/** Extrait court d'une réponse hors contrat, pour le diagnostic. Borné : cette chaîne
+ *  finit dans un rapport, et y déverser 100 000 caractères de réponse le rendrait
+ *  illisible — le but est de reconnaître le problème, pas de rejouer la réponse. */
+function apercu(raw: string): string {
+  const plat = raw.replace(/\s+/g, ' ').trim()
+  return plat.length > 160 ? `${plat.slice(0, 160)}…` : plat || '(réponse vide)'
 }

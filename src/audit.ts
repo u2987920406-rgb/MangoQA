@@ -14,13 +14,23 @@
 // continue de servir l'intégration MangoOS — les deux partagent le même moteur.
 
 import path from 'node:path'
-import type { AuditCoverage, Branch, BranchFinding, PhaseSignal, ProjectFile, QAVerdict } from './types.js'
+import type {
+  AuditCoverage,
+  Branch,
+  BranchFinding,
+  CauseAbstention,
+  PhaseSignal,
+  ProjectFile,
+  QAVerdict,
+} from './types.js'
 // (2026-08-05, J3) Import direct de `project-files.js`, PAS de `orchestrator.js` : c'est
 // ce qui garde la CLI légère. Passer par l'orchestrateur tirait design-eye, suite-eye,
 // retex et flux-eye/parser → web-tree-sitter (50 Mo de WASM) pour trois fonctions de
 // lecture. L'orchestrateur ré-exporte ce module, donc rien d'autre ne change.
 import { readProjectFiles, projectHasTests, realFs, type FsLike, type ReadStats } from './project-files.js'
-import { buildVerdict } from './verdict.js'
+import { buildVerdict, estPanne } from './verdict.js'
+import { CerveauInutilisableError, preflightCerveau, type ResultatPreflight } from './preflight.js'
+import { scanConventions, type ConventionsScan } from './conventions.js'
 import { architecture } from './branches/architecture.js'
 import { security } from './branches/security.js'
 import { accessibility } from './branches/accessibility.js'
@@ -52,9 +62,38 @@ export interface AuditOptions {
   onBranch?: (result: BranchResultLite) => void
   /** Nombre de tentatives déjà faites sur ce projet (nourrit le verdict). Défaut 0. */
   retryCount?: number
+  /**
+   * Vérifier que le cerveau sait rendre un verdict AVANT de lancer l'audit. Défaut : oui.
+   *
+   * (2026-08-05, J4-a) Coûte un aller-retour de quelques centaines de ms ; évite de
+   * découvrir au bout de six appels de plusieurs minutes que rien n'a été jugé. Échec
+   * → `CerveauInutilisableError`, jamais un rapport : un rapport rendu par un cerveau
+   * qui ne juge pas est très exactement ce que ce lot supprime.
+   *
+   * Passer `false` a un seul usage légitime : l'appelant a DÉJÀ fait le préflight
+   * (le harnais d'éval le fait, une fois pour toute une campagne).
+   */
+  preflight?: boolean
+  /**
+   * Lire les conventions écrites par le dépôt et juger contre elles. Défaut : oui.
+   *
+   * (2026-08-08, lot 3) Déterministe et bon marché (quelques fichiers texte à la
+   * racine). `false` rend un prompt byte-identique à celui d'avant le lot 3 — utile
+   * pour comparer deux mesures dont l'une précède le lot.
+   */
+  conventions?: boolean
+  /** Plafond de caractères de code par prompt. `undefined` → `QA_FILE_PAYLOAD_CAP`,
+   *  puis 100 000. Porté par le contrat depuis la faille L2-a : un serveur MCP
+   *  long-vivant ne peut pas régler ça par une variable de process partagée. */
+  cap?: number
   /** Injection (tests). */
   fs?: FsLike
   now?: () => number
+  /** Injection (tests) — le préflight réellement exécuté. */
+  preflightFn?: () => Promise<ResultatPreflight>
+  /** Injection (tests) — le registre de branches. Défaut : les 6 réelles.
+   *  Sert à rejouer une panne de cerveau de bout en bout sans réseau. */
+  branches?: Branch[]
 }
 
 export interface BranchResultLite {
@@ -86,6 +125,47 @@ export interface ReportCoverage {
   complete: boolean
 }
 
+/** Ce qui a effectivement été JUGÉ — le pendant de `ReportCoverage`.
+ *
+ *  (2026-08-05, J4-a) La couverture répond à « qu'a-t-il lu ? », celui-ci répond à
+ *  « qu'a-t-il jugé ? ». Il a fallu les deux : sur la sonde du 2026-08-05, la
+ *  couverture s'affichait **complète** — et elle disait vrai, les fichiers avaient
+ *  bien été envoyés — pendant qu'aucune des six branches n'avait rendu de verdict. */
+export interface ReportJugement {
+  /** Vrai si toutes les branches BLOQUANTES ont rendu un jugement. Faux dès qu'une
+   *  seule n'a pas pu juger : il n'existe alors plus de Feu Vert défendable. */
+  complet: boolean
+  /** Les branches qui n'ont PAS PU juger, et pourquoi. Vide si `complet`. */
+  nonJugees: Array<{ id: string; label: string; cause: CauseAbstention; blocking: boolean }>
+  /** Résultat du préflight, s'il a été exécuté. `undefined` = non exécuté. */
+  preflight?: ResultatPreflight
+}
+
+/** Ce que le dépôt avait ÉCRIT comme règles, et ce que l'audit en a fait.
+ *
+ *  (2026-08-08, lot 3) Troisième déclaration de la même famille que `coverage` (ce qui
+ *  a été lu) et `jugement` (ce qui a été jugé) : celle-ci dit **contre quoi** on a jugé.
+ *
+ *  ⚠️ Piège de lecture à ne jamais commettre : `citees` n'est PAS « les règles
+ *  vérifiées ». Une règle non citée a très bien pu être vérifiée et respectée. Ce champ
+ *  dit ce qui a été FOURNI au jugement et ce qui a été INVOQUÉ dans une trouvaille —
+ *  rien de plus. Prétendre l'inverse referait, sur les conventions, l'erreur que J1-a
+ *  et J4-a ont coûté cher à corriger. */
+export interface ReportConventions {
+  /** Fichiers de conventions lus (chemins relatifs). Vide si le projet n'en a aucun. */
+  files: string[]
+  /** Règles extraites et fournies au jugement. */
+  rulesProvided: number
+  /** Règles écartées par le cap (`QA_CONVENTIONS_CAP`). */
+  rulesDropped: number
+  /** Identifiants VÉRIFIÉS invoqués par au moins une trouvaille. */
+  cited: string[]
+  /** Citations rejetées : le modèle a invoqué une règle qui n'existe pas. */
+  rejected: string[]
+  /** Vrai si le projet ne documente AUCUNE convention lisible. Déclaré, jamais supposé. */
+  absent: boolean
+}
+
 export interface AuditReport {
   projectName: string
   projectDir: string
@@ -96,6 +176,11 @@ export interface AuditReport {
   filesScanned: number
   /** Ce qui a été vu et ce qui ne l'a pas été. À afficher AVEC le verdict, jamais après. */
   coverage: ReportCoverage
+  /** Ce qui a été jugé et ce qui ne l'a pas été. Même règle d'affichage que `coverage` :
+   *  AVEC le verdict, jamais en note de bas de page. */
+  jugement: ReportJugement
+  /** Contre quelles règles du dépôt on a jugé. `undefined` = scan désactivé. */
+  conventions?: ReportConventions
   durationMs: number
   /** Vrai si aucun fichier auditable n'a été trouvé (dossier vide, ou hors périmètre). */
   empty: boolean
@@ -114,14 +199,28 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
   if (!fsx.existsSync(dir)) throw new Error(`Dossier introuvable : ${dir}`)
 
   const projectName = path.basename(dir)
-  const branches = opts.only?.length
-    ? ALL_BRANCHES.filter(b => opts.only!.includes(b.id))
-    : ALL_BRANCHES
+  const registre = opts.branches ?? ALL_BRANCHES
+  const branches = opts.only?.length ? registre.filter(b => opts.only!.includes(b.id)) : registre
   if (branches.length === 0) {
     throw new Error(`Aucune branche ne correspond à : ${opts.only?.join(', ')}`)
   }
 
   const t0 = now()
+
+  // PRÉFLIGHT — avant de lire le moindre fichier. Un cerveau qui ne sait pas rendre un
+  // verdict rend l'audit entier sans objet ; le découvrir maintenant coûte quelques
+  // centaines de ms, le découvrir à la fin coûte six appels de plusieurs minutes.
+  let preflight: ResultatPreflight | undefined
+  if (opts.preflight !== false) {
+    preflight = await (opts.preflightFn ?? preflightCerveau)()
+    if (!preflight.ok) throw new CerveauInutilisableError(preflight)
+  }
+
+  // Les conventions se lisent UNE fois pour les six branches : elles décrivent le
+  // dépôt, pas le périmètre de chaque spécialité. Déterministe, aucun appel de modèle.
+  const scan: ConventionsScan | undefined =
+    opts.conventions === false ? undefined : scanConventions(dir, fsx)
+
   const readStats: ReadStats = { discovered: 0, read: 0, dropped: [] }
   const files: ProjectFile[] = readProjectFiles(dir, opts.changedFiles ?? [], fsx, readStats)
 
@@ -152,6 +251,13 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
         // dont AUCUN fichier n'a pu être lu ne l'est pas.
         complete: readStats.discovered === 0,
       },
+      // Aucune branche n'a tourné : aucune n'a échoué à juger. Un dossier sans code
+      // auditable est un non-événement, pas une panne de l'auditeur.
+      jugement: { complet: true, nonJugees: [], ...(preflight ? { preflight } : {}) },
+      // Aucune branche n'a tourné : rien n'a pu être cité. Le scan est tout de même
+      // rapporté — savoir qu'un dépôt documente 14 règles jamais confrontées à du code
+      // est une information, et la taire ferait croire qu'il n'en documente aucune.
+      ...(scan ? { conventions: agregerConventions(scan, []) } : {}),
       durationMs: now() - t0,
       empty: true,
     }
@@ -168,8 +274,19 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
     // qui empêche un rapport de mentir par omission.
     const finding: BranchFinding =
       relevant.length === 0
-        ? { status: 'skip', summary: 'Aucun fichier pertinent pour cette branche.' }
-        : await branch.audit({ signal, files: relevant, retex, testsElsewhereInProject: testsElsewhere })
+        ? {
+            status: 'skip',
+            summary: 'Aucun fichier pertinent pour cette branche.',
+            abstention: { cause: 'hors-perimetre' },
+          }
+        : await branch.audit({
+            signal,
+            files: relevant,
+            retex,
+            testsElsewhereInProject: testsElsewhere,
+            ...(scan ? { conventions: scan } : {}),
+            ...(opts.cap !== undefined ? { cap: opts.cap } : {}),
+          })
     const result: BranchResultLite = {
       id: branch.id,
       label: branch.label,
@@ -194,6 +311,16 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
   )
 
   const filesTruncated = files.filter(f => f.truncated).map(f => f.path)
+  // Les branches qui n'ont PAS PU juger — pannes seulement. Une branche hors périmètre
+  // ou un `skip` assumé par le juge sont des jugements, pas des trous.
+  const nonJugees = results
+    .filter(r => r.finding.status === 'skip' && estPanne(r.finding.abstention))
+    .map(r => ({
+      id: r.id,
+      label: r.label,
+      cause: r.finding.abstention?.cause ?? ('cause-inconnue' as CauseAbstention),
+      blocking: r.blocking,
+    }))
   return {
     projectName,
     projectDir: dir,
@@ -212,8 +339,34 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
         filesTruncated.length === 0 &&
         results.every(r => r.coverage === undefined || r.coverage.complete),
     },
+    jugement: {
+      // Seules les branches BLOQUANTES décident : design-system est un conseil, son
+      // silence n'empêche pas de statuer sur la santé du code.
+      complet: !nonJugees.some(b => b.blocking),
+      nonJugees,
+      ...(preflight ? { preflight } : {}),
+    },
+    ...(scan ? { conventions: agregerConventions(scan, results) } : {}),
     durationMs: now() - t0,
     empty: false,
+  }
+}
+
+/** Réunit le scan déterministe et ce que les branches en ont cité. */
+function agregerConventions(scan: ConventionsScan, results: BranchResultLite[]): ReportConventions {
+  const cited = new Set<string>()
+  const rejected = new Set<string>()
+  for (const r of results) {
+    for (const id of r.finding.conventions?.citees ?? []) cited.add(id)
+    for (const id of r.finding.conventions?.rejetees ?? []) rejected.add(id)
+  }
+  return {
+    files: scan.files,
+    rulesProvided: scan.rules.length,
+    rulesDropped: scan.dropped,
+    cited: [...cited].sort(),
+    rejected: [...rejected].sort(),
+    absent: scan.absent,
   }
 }
 

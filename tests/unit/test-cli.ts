@@ -36,9 +36,25 @@ function rapport(over: Partial<AuditReport> = {}): AuditReport {
     branches: [],
     filesScanned: 3,
     coverage: { filesDiscovered: 3, filesRead: 3, filesDropped: [], filesTruncated: [], complete: true },
+    jugement: { complet: true, nonJugees: [] },
     durationMs: 1234,
     empty: false,
     ...over,
+  }
+}
+
+/** Un rapport où `n` branche(s) bloquante(s) n'ont pas PU juger (J4-a). */
+function nonJuge(n = 1): Pick<AuditReport, 'jugement'> {
+  return {
+    jugement: {
+      complet: false,
+      nonJugees: Array.from({ length: n }, (_, i) => ({
+        id: `b${i}`,
+        label: `Branche ${i}`,
+        cause: 'reponse-illisible' as const,
+        blocking: true,
+      })),
+    },
   }
 }
 
@@ -121,6 +137,35 @@ describe('CLI — codes de sortie (contrat CI)', () => {
     expect(codeSortie(partiel, true)).toBe(EXIT.PARTIEL)
     // Le code PARTIEL doit rester DISTINCT du rouge : aucun défaut n'a été trouvé.
     expect(EXIT.PARTIEL).not.toBe(EXIT.ROUGE)
+  })
+
+  it('(J4-a) branche bloquante non JUGÉE → 4, TOUJOURS — aucun drapeau ne le désarme', () => {
+    const r = rapport(nonJuge())
+    // Contrairement à `PARTIEL` : une lecture partielle est un mode dégradé qu'on peut
+    // assumer, une absence de jugement n'est pas un audit. Sortir 0 ici, c'est
+    // certifier ce qu'on n'a pas vérifié — et en CI, personne ne le voit.
+    expect(codeSortie(r, false)).toBe(EXIT.NON_VERIFIE)
+    expect(codeSortie(r, true)).toBe(EXIT.NON_VERIFIE)
+    expect(EXIT.NON_VERIFIE).not.toBe(EXIT.VERT)
+  })
+
+  it('(J4-a) le ROUGE prime sur le non-jugé : un défaut trouvé est un fait', () => {
+    const r = rapport({
+      ...nonJuge(),
+      verdict: {
+        verdict: 'red',
+        rejection: { rejection_id: 'x', corrective_action: 'y', rule_ref: 'z', branch: 'security', retry_count: 0 },
+        branches: {},
+      },
+    })
+    expect(codeSortie(r, false)).toBe(EXIT.ROUGE)
+  })
+
+  it('(J4-a) le rendu ne dit PAS « FEU VERT » quand rien n\'a été jugé', () => {
+    const texte = rendreRapport(rapport(nonJuge()))
+    expect(texte).toContain('NON VÉRIFIÉ')
+    expect(texte).not.toContain('FEU VERT')
+    expect(texte).toContain('JUGEMENT')
   })
 })
 
