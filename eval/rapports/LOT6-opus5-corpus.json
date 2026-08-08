@@ -1,0 +1,557 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 4,
+      "detectes": 4,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 5,
+      "fauxPositifs": 0,
+      "jugementsPropres": 5,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 8340
+    },
+    {
+      "branch": "security",
+      "casDefaut": 6,
+      "detectes": 6,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 4,
+      "fauxPositifs": 0,
+      "jugementsPropres": 2,
+      "horsPerimetre": 2,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 7417
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 5,
+      "detectes": 5,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 5,
+      "fauxPositifs": 2,
+      "jugementsPropres": 4,
+      "horsPerimetre": 1,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 13927
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 4,
+      "detectes": 4,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 5,
+      "fauxPositifs": 0,
+      "jugementsPropres": 5,
+      "horsPerimetre": 0,
+      "abstentions": 2,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 8469
+    },
+    {
+      "branch": "tests",
+      "casDefaut": 2,
+      "detectes": 2,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 2,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 9796
+    },
+    {
+      "branch": "design-system",
+      "casDefaut": 0,
+      "detectes": 0,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 2,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "mentions": {
+        "attendues": 2,
+        "obtenues": 2
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 8698
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La clé service_role Supabase est exposée au client via le préfixe VITE_, ce qui donne à tout visiteur un accès admin contournant les RLS.",
+      "durationMs": 10820
+    },
+    {
+      "caseId": "SEC-01-cle-service-exposee",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "SEC-02-xss-innerhtml",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "XSS stocké : le corps du commentaire, non assaini, est injecté via dangerouslySetInnerHTML.",
+      "durationMs": 8845
+    },
+    {
+      "caseId": "SEC-03-injection-sql",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Injection SQL directe : le paramètre `q` est concaténé dans la requête SQL sans échappement ni paramétrage.",
+      "durationMs": 7165
+    },
+    {
+      "caseId": "SEC-04-cors-wildcard",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "CORS configuré avec origin '*' et credentials: true sur une API authentifiée par session, exposant /api/me à toute origine.",
+      "durationMs": 10232
+    },
+    {
+      "caseId": "SEC-05-path-traversal",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le chemin de fichier est construit directement depuis req.params.name sans validation, permettant un path traversal vers des fichiers hors du dossier uploads.",
+      "durationMs": 11173
+    },
+    {
+      "caseId": "A11Y-01-contraste",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les liens de navigation en #9a9a9a sur fond #ffffff n'offrent qu'un ratio de contraste d'environ 2,8:1, très en dessous du minimum requis de 4,5:1.",
+      "durationMs": 16795
+    },
+    {
+      "caseId": "A11Y-02-img-sans-alt",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les images de la galerie n'ont aucun attribut alt, laissant les lecteurs d'écran annoncer l'URL du fichier.",
+      "durationMs": 8187
+    },
+    {
+      "caseId": "A11Y-03-div-cliquable",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La carte cliquable est un <div onClick> sans rôle ni gestion clavier, inaccessible au clavier et aux technologies d'assistance.",
+      "durationMs": 7965
+    },
+    {
+      "caseId": "A11Y-04-input-sans-label",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Les deux champs du formulaire n'ont aucun label associé : seul un placeholder est fourni, ce qui ne constitue pas un nom accessible persistant.",
+      "durationMs": 9426
+    },
+    {
+      "caseId": "ARCH-01-monolithe",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Dashboard.tsx mélange règles métier (TVA, remises par palier, dérivation de statut) et rendu dans un seul composant qui orchestre aussi trois appels réseau.",
+      "durationMs": 11854
+    },
+    {
+      "caseId": "ARCH-02-duplication",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La fonction formatPrix est dupliquée à l'identique dans trois pages, ce qui oblige à corriger le formatage monétaire en trois endroits.",
+      "durationMs": 7511
+    },
+    {
+      "caseId": "ARCH-03-couplage-ui-db",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation UserBadge importe et exécute directement le pool PostgreSQL serveur, couplant le rendu à la couche base de données.",
+      "durationMs": 8434
+    },
+    {
+      "caseId": "PERF-01-liste-non-virtualisee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La liste de ~5000 lignes est rendue intégralement sans virtualisation ni pagination, créant ~15000 nœuds DOM d'un coup.",
+      "durationMs": 10371
+    },
+    {
+      "caseId": "PERF-02-useeffect-boucle",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le useEffect de Profil.tsx n'a aucun tableau de dépendances : le fetch se relance à chaque rendu et setUser redéclenche un rendu, créant une boucle de requêtes infinie.",
+      "durationMs": 9210
+    },
+    {
+      "caseId": "PERF-03-import-lourd",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Import de lodash entier et de moment pour deux fonctions triviales, alourdissant fortement le bundle client.",
+      "durationMs": 9051
+    },
+    {
+      "caseId": "TEST-01-logique-non-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La logique de facturation (paliers de remise et calcul TVA par catégorie) est livrée sans aucun test unitaire alors qu'elle est pure et trivialement testable.",
+      "durationMs": 14103
+    },
+    {
+      "caseId": "TEST-02-controle-logique-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique de remise livrée est couverte par des tests unitaires Vitest sur les trois paliers.",
+      "durationMs": 6090
+    },
+    {
+      "caseId": "DS-01-couleurs-hors-palette",
+      "branch": "design-system",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Promo.tsx utilise 7 couleurs hexadécimales codées en dur (#fef3c7, #fbbf24, #7c2d12, #92400e, #f97316, #fffbeb, #ea580c) alors que src/tokens.css définit déjà --brand/--ink/--surface/--muted : je conseille d'étendre la palette de tokens avec une échelle d'accent (ex. --accent-50/--accent-500/--accent-700) et de remplacer ces valeurs magiques par var(--…) pour garder le thème pilotable depuis un seul fichier.",
+      "mentioned": true,
+      "durationMs": 9741
+    },
+    {
+      "caseId": "DS-02-espacements-arbitraires",
+      "branch": "design-system",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Remplacer les valeurs arbitraires (padding 13px/27px, marginBottom 7, gap 11) par des tokens d'une échelle régulière 4/8px (ex. 12px/24px, 8, 12) pour aligner Panneau.tsx sur le design system.",
+      "mentioned": true,
+      "durationMs": 7654
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant de présentation court avec formatage extrait dans un utilitaire dédié : aucune violation structurelle.",
+      "durationMs": 5048
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète : bouton natif avec nom accessible textuel, région live correctement annoncée, aucun champ de formulaire ni image à étiqueter.",
+      "durationMs": 7724
+    },
+    {
+      "caseId": "CLEAN-01-composant-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant minimal sans liste, sans effet ni calcul coûteux ; formatage via l'API native Intl, aucune dépendance lourde importée.",
+      "durationMs": 5214
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Requête SQL paramétrée ($1), CORS restreint à une liste blanche explicite, aucun secret en dur détecté.",
+      "durationMs": 6936
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Deux modules courts et bien séparés (route HTTP d'un côté, configuration CORS de l'autre), sans duplication ni couplage structurel problématique.",
+      "durationMs": 5707
+    },
+    {
+      "caseId": "CLEAN-02-route-api-sure",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Aucun code client React ni chemin de bundle : la route Express et la config CORS ne relèvent pas de l'audit performance front.",
+      "durationMs": 7992
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Chaque champ possède un label associé via htmlFor/id, le bouton a un nom accessible et l'erreur est annoncée par role=alert lié en aria-describedby.",
+      "durationMs": 6788
+    },
+    {
+      "caseId": "CLEAN-03-formulaire-accessible",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant de présentation court et unique, sans logique métier ni duplication.",
+      "durationMs": 5016
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Pagination côté serveur (limit 25), clés stables `p.id`, effet correctement dépendant de `page` avec abort, et `uniq` local sans dépendance lourde : aucun anti-pattern de performance ni surpoids de bundle constaté.",
+      "durationMs": 7537
+    },
+    {
+      "caseId": "CLEAN-04-liste-paginee",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Composant court et lisible, logique de déduplication correctement extraite dans un utilitaire générique réutilisable ; aucune violation structurelle constatée.",
+      "durationMs": 6849
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern de performance concret : clés stables, mémoïsation correcte, pagination à 24, images dimensionnées et aucun import de librairie lourde.",
+      "durationMs": 11216
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "fail",
+      "outcome": "faux-positif",
+      "summary": "La hiérarchie des titres saute du h1 du catalogue au h3 des cartes, sans niveau h2 intermédiaire.",
+      "durationMs": 39253
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "LONG-02-catalogue-cle-manquante",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La grille principale rend une liste de CreatureCard via .map sans prop key, ce qui casse la réconciliation React.",
+      "durationMs": 8924
+    },
+    {
+      "caseId": "LONG-03-admin-xss-enfoui",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La note client est injectée via innerHTML sans assainissement, permettant un XSS stocké exécuté dans la session administrateur.",
+      "durationMs": 10383
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Requêtes entièrement paramétrées, note client échappée avant sortie, aucun secret ni CORS permissif : rien de bloquant côté sécurité.",
+      "durationMs": 8614
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Service cohérent d'environ 175 lignes, responsabilités séparées (accès données, règles de transition, échappement délégué à utils/html.js), sans duplication ni couplage indu.",
+      "durationMs": 10080
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Aucun code client (React, bundle, images) dans ces fichiers serveur : rien ne relève de ma spécialité performance front.",
+      "durationMs": 6702
+    },
+    {
+      "caseId": "LONG-05-facturation-non-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La logique de facturation (paliers de remise, prorata, TVA, arrondis en centimes, répartition d'avoir) est livrée sans aucun test alors qu'il s'agit de fonctions pures trivialement testables et à fort risque financier.",
+      "durationMs": 12486
+    },
+    {
+      "caseId": "LONG-06-facturation-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique de facturation livrée est couverte par des tests Vitest ciblant paliers, prorata, TVA, port offert, erreurs et répartition d'avoir.",
+      "durationMs": 6505
+    },
+    {
+      "caseId": "LONG-07-couplage-ui-db-enfoui",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation TableauBordVentes.jsx instancie lui-même le client Supabase et écrit sa requête SQL, couplant l'écran au schéma de la base.",
+      "durationMs": 14559
+    },
+    {
+      "caseId": "LONG-08-parametres-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "fail",
+      "outcome": "faux-positif",
+      "summary": "Le champ courriel est marqué aria-invalid=\"true\" sans qu'aucun message d'erreur textuel ne décrive le problème, alors que le bouton d'envoi est simultanément désactivé.",
+      "durationMs": 33281
+    },
+    {
+      "caseId": "LONG-09-parametres-div-cliquable",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contrôle « Révoquer » est un <div onClick> sans rôle ni accès clavier, donc inutilisable au clavier et invisible pour les technologies d'assistance.",
+      "durationMs": 9851
+    }
+  ],
+  "totalMs": 421300
+}

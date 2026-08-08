@@ -247,20 +247,99 @@ crie au loup sur toute spec », il ne mesure pas un taux de détection. Les spec
 `--spec` ne lit qu'un **fichier** : récupérer une issue demande réseau et
 authentification — consigné, pas codé.
 
-### Lot 5 — Intégration
+### Lot 5 — Intégration ✅ FAIT (2026-08-08)
 
-Être plus facile à brancher que l'étalon. Le serveur MCP existe ; il manque une
-installation en une commande dans Claude Code, et une action de CI prête à coller.
+`mangoqa init [dossier] [--ci] [--hook]` et `mangoqa install-hook` branchent l'auditeur
+sur **trois portes**, parce qu'on ne le branche pas au même moment : `.mcp.json`
+(l'assistant l'appelle pendant qu'on code), hook `pre-push` (la barrière tombe à la
+poussée), action de CI (à plusieurs, sur la forge).
 
-**Achevé quand :** un utilisateur passe de zéro à un premier verdict en une commande.
+**La règle qui gouverne le module : on n'écrase jamais le travail d'un autre.** Un
+`.mcp.json` à trois serveurs, un `pre-push` qui lance déjà des tests, ce sont des heures
+de réglage — un outil qui les remplace en silence pour s'installer plus vite est un outil
+qu'on désinstalle. Tout fusionne ou refuse : les autres serveurs survivent, une entrée
+`mangoqa` différente est respectée (c'est un réglage volontaire), un JSON illisible fait
+refuser plutôt qu'écraser, un hook étranger est laissé intact **avec la ligne exacte pour
+cohabiter**. Vérifié en réel sur un dépôt portant déjà un serveur `github` et un hook
+`npm run test:ci`.
 
-### Lot 6 — Prouver
+Deux choix qui décident si le hook survit à la semaine : **`--diff` et non le projet
+entier** (un `pre-push` doit rester de l'ordre de la dizaine de secondes, sinon il est
+désinstallé — et un hook désinstallé ne protège rien) et une **échappatoire explicite**
+`MANGOQA_SKIP=1` (sans elle, l'utilisateur passe par `--no-verify`, qui désarme *tous*
+les hooks du dépôt). Le code de sortie est propagé tel quel : **`4` bloque aussi**.
 
-Re-mesurer le corpus étiqueté **avec Opus 5**, publier le tableau et les limites, mettre
-la page produit en accord avec les chiffres.
+En CI, `--exiger-couverture` est activé **là et nulle part ailleurs** : personne n'y lit
+le rapport, et un feu vert rendu sur 30 % du code y passerait pour une vérification. Sans
+`ANTHROPIC_API_KEY`, le workflow s'arrête (code 2) au lieu de rendre un audit vide.
 
-**Achevé quand :** `docs/produit.html` ne contient plus un seul chiffre issu de l'ère du
-cerveau local.
+**Faille L4-a fermée** : `--spec #42` ou une URL d'issue passent par le CLI `gh` déjà
+authentifié chez l'utilisateur — **aucun code d'authentification maison**, aucun jeton
+stocké, aucune surface d'attaque ajoutée à un outil dont l'argument est la confiance.
+
+**Incident produit par le lot lui-même, et corrigé** : `init` n'agissait que sur
+`process.cwd()` ; lancé depuis le dépôt de Mango QA en croyant équiper un autre dossier,
+il y a écrit trois fichiers. Nettoyé, puis corrigé à la racine — argument de dossier, et
+le chemin visé est annoncé en tête de sortie. `tsc` propre, `npm run build` vert,
+**336 tests verts** (27 neufs, dont la moitié gèle des refus), plus deux vérifications
+hors TypeScript : le hook passe `sh -n` et son échappatoire rend bien `0`, et le
+protocole MCP répond 16/16. Détail : `eval/rapports/LOT5-INTEGRATION.md`.
+
+### Lot 6 — Prouver ✅ FAIT (2026-08-08)
+
+Corpus complet re-mesuré sous **`claude-opus-5`**, primaire, **aucun repli** : 32 cas
+(24 à défaut · 8 propres), 2 passes, **88 observations**, 776,5 s.
+
+| Branche | Détection | Ratés | Faux positifs | Abstentions | Pannes | Instables |
+|---|---|---|---|---|---|---|
+| architecture | **4/4** | 0 | 0/10 | 0 | — | 0 |
+| security | **6/6** | 0 | 0/4 *(+4 h.p.)* | 0 | — | 0 |
+| accessibility | **5/5** | 0 | **2/8** *(+2 h.p.)* | 0 | — | 0 |
+| performance | **4/4** | 0 | 0/10 | 4 | — | 0 |
+| tests | **1/1** | 0 | 0/4 | 0 | **2** | 0 |
+| design-system *(conseil)* | **4/4** mentions | 0 | 0/4 | 0 | — | 0 |
+
+**Zéro raté, zéro instable, détection 100 % sur les cinq branches bloquantes.** Les 4
+abstentions de `performance` sont le bon comportement (code serveur, hors spécialité,
+décliné en le disant). Les 2 pannes de `tests` sont des défaillances transitoires du SDK,
+sorties du dénominateur et affichées à part.
+
+**Trois défauts de l'INSTRUMENT trouvés avant qu'un chiffre ne soit publié** — un chiffre
+rendu sous de mauvaises conditions est pire qu'aucun chiffre : **L6-a** l'en-tête ignorait
+`QA_BRAIN` et annonçait le mauvais cerveau (2ᵉ occurrence après J2-d ; tranché par une
+preuve — `OLLAMA_URL` sur un port mort, l'audit répond quand même) · **L6-c** le harnais
+confondait panne et abstention, ce qui faisait tomber `architecture` à 3/4 et `tests` à
+1/2 sur des incidents **réseau** · **L6-b** un test manuel affirmait « 6 branches » en dur
+et n'avait rien dit depuis le lot 4, faute d'être exécuté.
+
+**La fausse alerte est publiée avec son analyse.** `LONG-01` → accessibilité : saut de
+niveau de titre, **fait vérifié à la main, exact**. Ce n'est pas une hallucination, c'est
+le corpus qui affirmait plus qu'il ne pouvait. **L'assertion n'a pas été retirée** (L6-d) :
+éditer un corpus après avoir vu un résultat défavorable ruine une mesure, même quand c'est
+défendable.
+
+`docs/produit.html` **ne contient plus un seul chiffre de l'ère du cerveau local**. Au
+passage : « 1,6 Mo installés » était **périmé** — remesuré à **1,09 Mo** dans un dossier
+vierge, corrigé plutôt que recopié. La page affiche désormais le run réel d'`abyss`
+**panne comprise** : l'auditeur y trouve deux vrais défauts et refuse quand même de vendre
+son verdict comme complet.
+
+**Deux découvertes en conditions réelles** : l'axe *Standards* a **changé un verdict** sur
+du vrai code (Tests passe au vert en s'appuyant sur une règle du `CLAUDE.md` du dépôt, là
+où le cerveau local rendait rouge) — mais **`cited` est resté vide** (L6-e), le modèle
+ayant paraphrasé la règle sans citer son identifiant. Et la panne SDK n'est **pas
+aléatoire** (L6-f) : elle se concentre sur les plus gros prompts. Détail :
+`eval/rapports/LOT6-PREUVE.md`.
+
+---
+
+## Les sept lots sont clos
+
+Ce qui reste avant une publication npm n'est plus du code, c'est **un dépôt tiers à
+auditer** : L140 (pas de vraies conventions de code mesurées), L141 (pas de vrai ticket),
+L139 (`reponse-illisible` jamais rejouée contre un vrai modèle incompatible), L5-b (`gh`
+non authentifié ici). Le § 4 garde `private: true` jusqu'au lot 6 — il est fait, mais ces
+quatre limites disent ce qu'une publication annoncerait sans l'avoir vérifié.
 
 ---
 

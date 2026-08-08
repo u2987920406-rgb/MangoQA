@@ -12,8 +12,17 @@
 // dire — c'est très exactement le défaut que J2 a corrigé, et un affichage paresseux
 // suffirait à le réintroduire côté présentation.
 import 'dotenv/config'
-import { realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import {
+  CHEMIN_WORKFLOW,
+  CHEMINS,
+  contenuWorkflowCi,
+  fusionnerMcpConfig,
+  planifierHook,
+  type ResultatInstallation,
+} from './integration.js'
 import { auditProject, ALL_BRANCHES, type AuditReport, type BranchResultLite } from './audit.js'
 import { CERVEAUX, cerveauPrimaire, type Cerveau } from './llm.js'
 import { LIBELLE_CAUSE, estNonVerifie } from './verdict.js'
@@ -49,15 +58,25 @@ const AIDE = `🥭 mangoqa ${VERSION} — audite un dossier de code et rend un v
 
 USAGE
   mangoqa <dossier> [options]
+  mangoqa init [dossier] [--ci] [--hook]   Brancher Mango QA (voir INSTALLATION)
+  mangoqa install-hook [dossier]           Poser le hook git pre-push, seul
+
+INSTALLATION   (dossier facultatif — défaut : le dossier courant)
+  mangoqa init            écrit .mcp.json → ton assistant (Claude Code, Cursor)
+                          peut appeler l'auditeur pendant que tu codes
+  mangoqa init --hook     + hook pre-push : la barrière tombe à chaque poussée
+  mangoqa init --ci       + .github/workflows/mangoqa.yml, prêt à coller
+  Rien n'est jamais écrasé : un fichier existant est fusionné, ou laissé intact.
 
 OPTIONS
   --diff [ref]            N'auditer que ce qui a changé.
                             sans ref  → ce qui n'est pas encore commité (avant de pousser)
                             avec ref  → ce qui a divergé depuis ce point (avant de fusionner)
                                         ex. --diff main, --diff v1.2.0, --diff a1b2c3d
-  --spec <fichier>        Ce qui était DEMANDÉ (ticket, cahier des charges, description
-                          de tâche). Active la branche Spec : le code fait-il ce qu'on
-                          attendait ? Sans elle, l'audit le déclare et ne juge pas dessus.
+  --spec <source>         Ce qui était DEMANDÉ : un fichier, ou une issue (\`#42\` ou son
+                          URL, lue via le CLI \`gh\` déjà authentifié chez vous). Active la
+                          branche Spec : le code fait-il ce qu'on attendait ? Sans elle,
+                          l'audit le déclare et ne juge pas dessus.
   --cerveau <nom>         Cerveau d'audit : ${CERVEAUX.join(' | ')}. Défaut : ollama.
                           RECOMMANDÉ : claude (qualité de jugement nettement supérieure).
   --modele <id>           Modèle du cerveau claude. Défaut : claude-opus-5.
@@ -110,9 +129,49 @@ export interface CliOptions {
 
 /** Analyse `argv` (sans `node` ni le script). Lève une `Error` sur usage invalide —
  *  l'appelant la traduit en code ${EXIT.USAGE}. Pure : testable sans process. */
-export function parseArgs(argv: string[]): CliOptions | { aide: string } {
+/** Une sous-commande d'installation, reconnue AVANT toute analyse de dossier.
+ *  (Correctif exact proposé par la branche Spec le 2026-08-08 sur son propre diff.) */
+export interface CommandeInstallation {
+  commande: 'init'
+  /** Écrire `.mcp.json`. Faux pour `install-hook`, qui ne fait qu'une chose. */
+  mcp: boolean
+  ci: boolean
+  hook: boolean
+  /** Dépôt à équiper. Défaut : le dossier courant.
+   *
+   *  (2026-08-08) Ajouté après un vrai incident pendant la vérification du lot : sans
+   *  cet argument, `init` n'agissait que sur `process.cwd()` — j'ai lancé la commande
+   *  depuis le dépôt de Mango QA en croyant équiper un autre dossier, et elle a écrit
+   *  trois fichiers dans le mauvais dépôt. Une commande qui écrit sur disque doit dire
+   *  OÙ elle écrit et permettre de le choisir : toutes les autres commandes de cette
+   *  CLI prennent un dossier, celle-ci n'avait aucune raison de faire exception. */
+  dossier?: string
+}
+
+export function parseArgs(argv: string[]): CliOptions | CommandeInstallation | { aide: string } {
   if (argv.length === 0 || argv.includes('-h') || argv.includes('--help')) return { aide: AIDE }
   if (argv.includes('-v') || argv.includes('--version')) return { aide: VERSION }
+
+  // Les sous-commandes se lisent EN TÊTE, avant que `install-hook` puisse être pris
+  // pour un nom de dossier. C'est le seul endroit où l'ordre des arguments compte.
+  if (argv[0] === 'init' || argv[0] === 'install-hook') {
+    const reste = argv.slice(1)
+    const drapeaux = reste.filter(a => a.startsWith('-'))
+    const inconnu = drapeaux.find(a => !['--ci', '--hook'].includes(a))
+    if (inconnu) throw new Error(`Option inconnue pour ${argv[0]} : ${inconnu}. Attendues : --ci, --hook.`)
+    const cibles = reste.filter(a => !a.startsWith('-'))
+    if (cibles.length > 1) throw new Error(`Un seul dossier à la fois (reçu "${cibles.join('", "')}").`)
+    const dossier = cibles[0]
+    return argv[0] === 'install-hook'
+      ? { commande: 'init', mcp: false, ci: false, hook: true, ...(dossier ? { dossier } : {}) }
+      : {
+          commande: 'init',
+          mcp: true,
+          ci: drapeaux.includes('--ci'),
+          hook: drapeaux.includes('--hook'),
+          ...(dossier ? { dossier } : {}),
+        }
+  }
 
   let dossier: string | undefined
   const opts: CliOptions = {
@@ -361,6 +420,78 @@ export function codeSortie(r: AuditReport, exigerCouverture: boolean): number {
   return EXIT.VERT
 }
 
+/** Exécute `mangoqa init` / `install-hook`. Rendu séparé de l'audit : ces commandes ne
+ *  lisent aucun code, n'appellent aucun modèle, et ne peuvent rendre ni vert ni rouge. */
+export function executerInstallation(cmd: CommandeInstallation, dirParDefaut = process.cwd()): number {
+  const dir = path.resolve(cmd.dossier ?? dirParDefaut)
+  // Le dossier visé est ANNONCÉ. Une commande qui écrit sur disque sans dire où le fait
+  // dans le mauvais dossier tôt ou tard — c'est arrivé pendant la vérification de ce lot.
+  const lignes: string[] = ['', `🥭 mangoqa — branchement sur ${dir}`, '']
+  let refus = false
+
+  const poser = (
+    fichier: string,
+    plan: { contenu: string; etat: ResultatInstallation['etat']; detail: string },
+    etiquette: string,
+  ): void => {
+    if (plan.etat !== 'refuse' && plan.etat !== 'inchange') {
+      mkdirSync(path.dirname(fichier), { recursive: true })
+      writeFileSync(fichier, plan.contenu, 'utf8')
+      // Sur un système POSIX, un hook non exécutable est un hook que git ignore EN
+      // SILENCE — l'utilisateur croirait la barrière posée alors qu'elle ne l'est pas.
+      if (fichier.endsWith(`hooks${path.sep}pre-push`)) {
+        try {
+          chmodSync(fichier, 0o755)
+        } catch {
+          /* Windows : sans objet */
+        }
+      }
+    }
+    const icone = { ecrit: '✅', fusionne: '✅', inchange: '·', refuse: '⚠️' }[plan.etat]
+    lignes.push(`  ${icone} ${etiquette.padEnd(22)} ${path.relative(dir, fichier) || fichier}`)
+    lignes.push(`     ${plan.detail}`)
+    if (plan.etat === 'refuse') refus = true
+  }
+
+  const lire = (p: string): string | null => (existsSync(p) ? readFileSync(p, 'utf8') : null)
+
+  if (cmd.mcp) {
+    const f = CHEMINS.mcp(dir)
+    poser(f, fusionnerMcpConfig(lire(f)), 'Assistant (MCP)')
+  }
+  if (cmd.hook) {
+    const f = CHEMINS.hook(dir)
+    if (!existsSync(path.join(dir, '.git'))) {
+      lignes.push('  ⚠️ Hook pre-push          — ce dossier n\'est pas un dépôt git, rien à installer.')
+      refus = true
+    } else {
+      poser(f, planifierHook(lire(f)), 'Hook pre-push')
+    }
+  }
+  if (cmd.ci) {
+    const f = CHEMINS.ci(dir)
+    const existant = lire(f)
+    poser(
+      f,
+      existant === null
+        ? { contenu: contenuWorkflowCi(), etat: 'ecrit', detail: 'workflow prêt à committer' }
+        : { contenu: existant, etat: 'refuse', detail: `${CHEMIN_WORKFLOW} existe déjà — je ne le remplace pas.` },
+      'Action de CI',
+    )
+  }
+
+  lignes.push('')
+  lignes.push('  Essayer tout de suite :  mangoqa .')
+  if (cmd.ci) lignes.push('  La CI a besoin du secret ANTHROPIC_API_KEY sur le dépôt.')
+  lignes.push('')
+  console.log(lignes.join('\n'))
+  // Un refus n'est PAS un échec d'installation : les autres portes sont posées, et on a
+  // expliqué quoi faire pour celle qu'on n'a pas touchée. Sortir en erreur casserait un
+  // `mangoqa init && mangoqa .` parfaitement légitime — le message suffit à alerter.
+  void refus
+  return EXIT.VERT
+}
+
 export async function main(argv: string[]): Promise<number> {
   let opts: CliOptions
   try {
@@ -369,6 +500,7 @@ export async function main(argv: string[]): Promise<number> {
       console.log(parsed.aide)
       return EXIT.VERT
     }
+    if ('commande' in parsed) return executerInstallation(parsed)
     opts = parsed
   } catch (err) {
     console.error(`[mangoqa] ${err instanceof Error ? err.message : String(err)}`)

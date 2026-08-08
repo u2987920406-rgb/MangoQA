@@ -6,11 +6,19 @@
   ⚠️ CETTE PAGE CITE DES CHIFFRES MESURÉS. Ils ont une date et ils vieilliront.
   Avant toute republication, revérifier chaque nombre contre sa source :
 
-    tableau du corpus long ...... eval/rapports/J2-COUVERTURE.md (§ Mesure finale)
-    32 cas / 9 cas longs ........ eval/corpus.ts + eval/corpus-long.ts
-    sortie du terminal (héros) .. eval/rapports/J2-RUNS-abyss.md (run au cap 100 000)
-    codes de sortie 0/1/2/3 ..... src/cli.ts (constante EXIT)
-    1,6 Mo installés ............ npm pack + install dans un dossier vierge
+    tableau du corpus .......... eval/rapports/LOT6-PREUVE.md (§ Résultat par branche)
+    32 cas / 9 cas longs ....... eval/corpus.ts + eval/corpus-long.ts
+    sortie du terminal (héros) . eval/rapports/LOT6-abyss-opus5.md
+    codes de sortie 0/1/2/3/4 .. src/cli.ts (constante EXIT)
+    1,09 Mo installés .......... npm pack + install dans un dossier vierge (2026-08-08).
+                                 L'ancienne page annonçait 1,6 Mo : chiffre périmé,
+                                 remesuré et corrigé plutôt que recopié.
+
+  ⚠️ AUCUN CHIFFRE DE L'ÈRE DU CERVEAU LOCAL NE DOIT SUBSISTER ICI (ADR-001, lot 6).
+  Les mesures antérieures au 2026-08-08 ont été rendues par qwen2.5-coder:14b ; le
+  cerveau par défaut est Claude Opus 5 depuis la décision D1, et deux audits rendus par
+  deux cerveaux différents ne sont pas comparables. Republier un ancien chiffre sous le
+  nouveau nom serait la faute exacte que ce produit reproche aux générateurs.
 
   La section « Ce que cette mesure n'établit pas » n'est pas une modestie d'usage :
   c'est la condition de crédibilité de tout le reste. Un produit qui demande de ne
@@ -314,29 +322,41 @@
         il a réellement envoyés au modèle, et lesquels il a laissés de côté.
       </p>
       <p class="accroche">
-        Un feu vert sur 27&nbsp;% du code n'est pas un feu vert. C'est le mensonge par
-        omission que ce produit existe pour rendre impossible.
+        Un feu vert sur une fraction du code n'est pas un feu vert. Un feu vert rendu par
+        un cerveau qui n'a rien pu juger non plus. C'est le mensonge par omission que ce
+        produit existe pour rendre impossible.
       </p>
     </div>
 
-    <div class="term" role="img" aria-label="Sortie de terminal : audit du projet abyss. Sécurité feu vert 4 sur 4 fichiers vus, Accessibilité feu vert 13 sur 13, Performance feu vert 19 sur 19, Tests feu rouge 19 sur 19. Couverture complète, 20 fichiers lus et vus en entier. Verdict feu rouge sur la branche tests.">
+    <div class="term" role="img" aria-label="Sortie de terminal : audit réel du projet abyss avec Claude Opus 5. Spec non fournie. Architecture n'a pas pu juger, le cerveau n'a pas répondu. Sécurité feu vert 4 fichiers sur 4 vus. Accessibilité feu rouge 13 sur 13 : carte non accessible au clavier. Performance feu rouge 19 sur 19. Tests feu vert 19 sur 19. Design system feu vert 14 sur 14. Couverture complète, 20 fichiers lus et vus en entier. Verdict feu rouge sur la branche accessibilité, mais jugement incomplet car une branche bloquante n'a pas pu juger.">
       <div class="term-barre"><span class="pastille"></span><span class="pastille"></span><span class="pastille"></span> mangoqa ./abyss</div>
       <div class="term-corps" aria-hidden="true">
 <div class="l-faible">$ mangoqa ./abyss</div>
 <div> </div>
-<div><span class="l-vert">🟢</span> Sécurité        61.5s   <span class="l-fort">4/4 vus</span>    Aucune vulnérabilité OWASP détectée.</div>
-<div><span class="l-vert">🟢</span> Accessibilité  137.2s  <span class="l-fort">13/13 vus</span>  Aucune barrière d'accès concrète.</div>
-<div><span class="l-vert">🟢</span> Architecture   315.2s  <span class="l-fort">19/19 vus</span>  Aucune violation structurelle.</div>
-<div><span class="l-vert">🟢</span> Performance    345.5s  <span class="l-fort">19/19 vus</span>  Aucun anti-pattern majeur.</div>
-<div><span class="l-rouge">🔴</span> Tests          351.0s  <span class="l-fort">19/19 vus</span>  Aucun fichier de test n'existe.</div>
+<div><span class="l-faible">⚪</span> Spec            0.0s  <span class="l-faible">—</span>          Aucune spec fournie — rien à comparer.</div>
+<div><span class="l-faible">⚪</span> Architecture   18.5s  <span class="l-fort">19/19 vus</span>  <span class="l-faible">Le cerveau n'a pas répondu.</span></div>
+<div><span class="l-vert">🟢</span> Sécurité       11.8s  <span class="l-fort">4/4 vus</span>    Aucune vulnérabilité concrète.</div>
+<div><span class="l-rouge">🔴</span> Accessibilité  30.1s  <span class="l-fort">13/13 vus</span>  Carte ouvrable à la souris seulement.</div>
+<div><span class="l-rouge">🔴</span> Performance    38.3s  <span class="l-fort">19/19 vus</span>  L'état de scroll re-rend tout l'arbre.</div>
+<div><span class="l-vert">🟢</span> Tests          14.3s  <span class="l-fort">19/19 vus</span>  Logique de présentation — non bloquant.</div>
+<div><span class="l-vert">🟢</span> Design System  17.1s  <span class="l-fort">14/14 vus</span>  Couleurs de marque en dur, conseil.</div>
 <div> </div>
 <div class="l-faible">  COUVERTURE : <span class="l-vert">complète</span> — 20 fichiers lus et vus en entier.</div>
+<div class="l-faible">  CONVENTIONS : 34 règles lues dans ../../CLAUDE.md</div>
 <div> </div>
-<div class="l-fort">  VERDICT : <span class="l-rouge">🔴 FEU ROUGE</span> — branche tests</div>
-<div class="l-faible">  Correctif : « Créer des tests pour la logique métier,</div>
-<div class="l-faible">               notamment les hooks et les validations. »</div>
+<div class="l-fort">  JUGEMENT — <span class="l-rouge">INCOMPLET</span></div>
+<div class="l-faible">    ⚠️ Architecture : le cerveau n'a pas répondu</div>
+<div> </div>
+<div class="l-fort">  VERDICT : <span class="l-rouge">🔴 FEU ROUGE</span> — accessibilité  <span class="l-faible">⚠️ JUGEMENT INCOMPLET</span></div>
+<div class="l-faible">  Règle : WCAG 2.2 2.1.1 (Clavier)</div>
       </div>
     </div>
+    <p class="note" style="grid-column:1/-1;margin-top:-0.4rem">
+      Sortie réelle, non retouchée, du 8 août 2026 — <span class="ic">claude-opus-5</span>,
+      44,2 s. <b>Nous avons gardé le run où notre propre cerveau a lâché sur une branche.</b>
+      C'est précisément ce que la page raconte : l'auditeur a trouvé deux vrais défauts, et
+      il refuse quand même de vous vendre ce verdict comme complet.
+    </p>
   </div>
 </section>
 
@@ -405,8 +425,8 @@
         <h3>Le développeur solo</h3>
         <p>
           Vous générez beaucoup, vous relisez seul, personne ne vous fait de revue. Mango
-          QA est le deuxième regard que vous n'avez pas — et il tourne sur votre machine,
-          gratuitement, autant de fois que vous voulez.
+          QA est le deuxième regard que vous n'avez pas — un processus séparé, qui dit
+          rouge même quand le générateur dit « terminé ».
         </p>
       </div>
       <div class="carte qui">
@@ -435,31 +455,34 @@
   <div class="enveloppe pile-large">
     <div class="texte pile">
       <div class="eyebrow">Comment</div>
-      <h2>Trois commandes, aucune configuration.</h2>
+      <h2>Une commande, et il est branché.</h2>
       <p style="color:var(--texte-2)">
-        L'installation pèse 1,6 Mo. Le cerveau d'audit est un modèle local joint en HTTP :
-        aucun octet de votre code ne quitte votre machine, et chaque audit coûte zéro.
+        L'installation pèse 1,1 Mo. <span class="ic">mangoqa init</span> pose les trois
+        portes — votre assistant, votre <span class="ic">git push</span>, votre CI — et ne
+        remplace jamais une configuration existante : elle est fusionnée, ou laissée intacte.
       </p>
     </div>
 
     <div class="texte pile">
       <div class="bloc-cmd">
-<div><span class="cmt"># installer</span></div>
+<div><span class="cmt"># installer, puis brancher (MCP + hook pre-push + action de CI)</span></div>
 <div><span class="inv">$</span> npm i -g mango-qa</div>
+<div><span class="inv">$</span> mangoqa init --hook --ci</div>
 <div> </div>
-<div><span class="cmt"># auditer</span></div>
-<div><span class="inv">$</span> mangoqa ./mon-projet</div>
+<div><span class="cmt"># auditer ce qui a changé — le mode à privilégier</span></div>
+<div><span class="inv">$</span> mangoqa . --diff</div>
 <div> </div>
-<div><span class="cmt"># cibler une préoccupation</span></div>
-<div><span class="inv">$</span> mangoqa ./mon-projet --only security,tests</div>
+<div><span class="cmt"># le code fait-il ce qui était demandé ?</span></div>
+<div><span class="inv">$</span> mangoqa . --diff --spec #42</div>
 <div> </div>
 <div><span class="cmt"># en intégration continue : refuser un feu vert partiel</span></div>
 <div><span class="inv">$</span> mangoqa . --json rapport.json --exiger-couverture</div>
       </div>
       <p class="note">
-        Six branches d'audit spécialisées — architecture, sécurité, accessibilité,
+        Sept branches d'audit spécialisées — spec, architecture, sécurité, accessibilité,
         performance, tests, design system — chacune avec son propre périmètre de fichiers
-        et sa propre couverture déclarée.
+        et sa propre couverture déclarée. La branche <b>spec</b> ne juge pas le code : elle
+        juge le travail, et ne s'allume que si vous lui dites ce qui était demandé.
       </p>
     </div>
 
@@ -482,6 +505,10 @@
           <div class="code-n" style="color:var(--accent)">3</div>
           <p><b>Feu vert sur lecture partielle</b>, avec <span class="ic">--exiger-couverture</span>. Distinct du rouge : aucun défaut n'a été trouvé. On refuse seulement de traiter « rien vu » comme « rien à signaler ».</p>
         </div>
+        <div class="code-l">
+          <div class="code-n" style="color:var(--accent)">4</div>
+          <p><b>Non vérifié.</b> Une branche bloquante n'a pas <em>pu</em> juger — le cerveau n'a pas répondu, ou pas dans le contrat. Ni vert ni rouge : il n'y a pas de verdict. <b>Ce code n'est pas désactivable</b> — une lecture partielle est un mode dégradé qu'on peut assumer, une absence de jugement n'est pas un audit.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -496,7 +523,8 @@
         Sortir un auditeur dont on ignore le taux d'erreur serait exactement la faute qu'on
         reproche aux générateurs de code. Mango QA est évalué contre un corpus de
         <strong>32 cas étiquetés</strong> — des défauts réels, injectés et localisés, plus
-        des contrôles propres pour mesurer les fausses alertes.
+        <strong>8 contrôles propres</strong> dont le seul rôle est de faire apparaître nos
+        fausses alertes. Le tableau ci-dessous en contient.
       </p>
     </div>
 
@@ -504,47 +532,68 @@
       <div class="tableau-boite">
         <table>
           <caption class="note" style="text-align:left;padding:0.85rem 0.9rem 0.2rem">
-            Corpus « fichiers longs » — 9 cas de 150 à 240 lignes, 3 passes, modèle local <span class="ic">qwen2.5-coder:14b</span>.
+            Corpus complet — 32 cas (24 à défaut, 8 propres), 2 passes, <b>88 observations</b>,
+            cerveau <span class="ic">claude-opus-5</span>, 776 s. Mesuré le 8 août 2026.
+            « Détection » se compte en <b>cas</b> ; « fausses alertes » en <b>jugements propres réels</b>.
           </caption>
           <thead>
             <tr>
               <th scope="col">Branche</th>
               <th scope="col">Détection</th>
+              <th scope="col">Défauts ratés</th>
               <th scope="col">Fausses alertes</th>
               <th scope="col">Verdicts instables</th>
             </tr>
           </thead>
           <tbody>
-            <tr><th scope="row">architecture</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 3</td><td class="num ok">0</td></tr>
-            <tr><th scope="row">sécurité</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 3</td><td class="num ok">0</td></tr>
-            <tr><th scope="row">accessibilité</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 6</td><td class="num ok">0</td></tr>
-            <tr><th scope="row">performance</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 6</td><td class="num ok">0</td></tr>
-            <tr><th scope="row">tests</th><td class="num ok">1/1 · 3 passes</td><td class="num">0 / 3</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">architecture</th><td class="num ok">4/4 · 100 %</td><td class="num ok">0</td><td class="num ok">0 / 10</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">sécurité</th><td class="num ok">6/6 · 100 %</td><td class="num ok">0</td><td class="num ok">0 / 4</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">accessibilité</th><td class="num ok">5/5 · 100 %</td><td class="num ok">0</td><td class="num" style="color:var(--rouge);font-weight:600">2 / 8</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">performance</th><td class="num ok">4/4 · 100 %</td><td class="num ok">0</td><td class="num ok">0 / 10</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">tests</th><td class="num ok">1/1 · 100 %</td><td class="num ok">0</td><td class="num ok">0 / 4</td><td class="num ok">0</td></tr>
+            <tr><th scope="row">design system <span class="note">(conseil)</span></th><td class="num ok">4/4 mentions</td><td class="num ok">0</td><td class="num ok">0 / 4</td><td class="num ok">0</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
     <div class="texte pile">
+      <p style="color:var(--texte-2)">
+        <b>Zéro défaut raté sur 88 observations, zéro verdict instable — et deux fausses
+        alertes en accessibilité,</b> sur le même fichier aux deux passes. Nous ne les
+        effaçons pas : elles sont la seule ligne de ce tableau qui vous apprend quelque
+        chose sur nos limites.
+      </p>
+      <p class="note">
+        Le motif a été vérifié à la main. La branche a signalé un <b>saut de niveau de
+        titre</b> (des <span class="ic">h3</span> sans <span class="ic">h2</span>
+        intermédiaire) — et elle avait factuellement raison : ce n'est pas une
+        hallucination. C'est notre corpus qui déclarait ce fichier « propre en
+        accessibilité » alors qu'il avait été écrit comme un contrôle de tout autre chose.
+        Nous n'avons pas retiré l'étiquette après coup : corriger un corpus juste après
+        avoir vu un résultat défavorable ruine une mesure, même quand c'est défendable.
+        Le chiffre publié est celui mesuré contre le corpus tel qu'il était.
+      </p>
       <ul class="liste">
         <li><span class="puce">→</span><span><b>Chaque défaut a un jumeau propre.</b> Le même fichier, à une ligne près. Sans lui, un outil qui crie au loup sur tout code long afficherait 100 % de détection.</span></li>
         <li><span class="puce">→</span><span><b>Le défaut est enfoui</b> dans le dernier tiers du fichier, jamais en tête.</span></li>
         <li><span class="puce">→</span><span><b>Les motifs sont vérifiés à la main.</b> Un verdict juste peut l'être pour la mauvaise raison — nous lisons ce que la branche a cité, pas seulement si elle a dit « fail ».</span></li>
+        <li><span class="puce">→</span><span><b>Une panne n'est pas une faute — et n'est pas non plus effacée.</b> Quand le cerveau ne répond pas, l'appel sort des dénominateurs de qualité et s'affiche dans sa propre colonne. Le fondre dans les abstentions noircissait le score ; le taire l'aurait flatté.</span></li>
       </ul>
     </div>
 
     <div class="texte pile" style="gap:0.9rem">
       <h3 style="font-size:0.95rem;color:var(--texte-3);letter-spacing:0.09em;text-transform:uppercase;font-weight:600">Ce que cette mesure n'établit pas</h3>
-      <p style="color:var(--texte-2);font-size:0.96rem">
-        Derrière ces chiffres il y a <strong>un seul défaut par branche</strong>, répété trois
-        fois, sur un modèle et une machine. La stabilité est mesurée ; l'étendue ne l'est pas
-        encore. Et un faux positif observé une fois sur un projet réel n'a jamais été reproduit
-        par ce corpus — donc il n'est pas expliqué.
-      </p>
+      <ul class="liste">
+        <li><span class="puce">→</span><span><b>Un corpus, un modèle, une machine, deux passes.</b> Ces chiffres disent que l'auditeur discrimine sur <em>ce</em> corpus. Ils ne prédisent pas son comportement sur votre code.</span></li>
+        <li><span class="puce">→</span><span><b>Le corpus est écrit par nous.</b> Les défauts sont réalistes et vérifiés à la main, mais ils sont injectés — pas récoltés dans la nature.</span></li>
+        <li><span class="puce">→</span><span><b>L'axe « conventions » n'a pas encore trouvé de vrai dépôt à conventions de code</b>, et l'axe « spec » n'a jamais été confronté à un vrai ticket, bavard et ambigu. Les deux mécanismes sont prouvés ; leur valeur ne l'est pas.</span></li>
+      </ul>
       <p class="note">
         C'est écrit ici pour la même raison que la couverture est écrite dans le verdict.
         Un outil qui vous demande de ne pas croire les logiciels sur parole ne peut pas
-        vous demander de le croire sur parole.
+        vous demander de le croire sur parole. Le registre complet de ce que nous ne savons
+        pas encore vit dans <span class="ic">FAILLES.md</span>, à côté du code.
       </p>
     </div>
   </div>
@@ -553,25 +602,53 @@
 <section class="creux">
   <div class="enveloppe pile-large">
     <div class="texte pile">
-      <div class="eyebrow">Souveraineté</div>
-      <h2>Votre code reste chez vous.</h2>
+      <div class="eyebrow">Quatre déclarations</div>
+      <h2>Il vous dit toujours sur quoi porte son verdict.</h2>
+      <p style="color:var(--texte-2)">
+        Chacune de ces quatre lignes est née d'un défaut réel, trouvé en exécution sur du
+        vrai code — pas d'une relecture. Et chacune obéit à la même règle de conception :
+        <strong>rien d'optimiste n'est jamais une valeur par défaut.</strong>
+      </p>
+    </div>
+
+    <div class="enveloppe grille grille-2">
+      <div class="carte">
+        <h3>Couverture — ce qu'il a lu</h3>
+        <p>Combien de fichiers sont réellement partis au modèle, et lesquels ont été laissés de côté. Non mesuré n'est jamais rendu comme « tout lu ».</p>
+      </div>
+      <div class="carte">
+        <h3>Jugement — ce qu'il a pu juger</h3>
+        <p>Un cerveau qui ne répond pas, ou pas dans le contrat, ne produit plus un feu vert. Il produit <b>NON VÉRIFIÉ</b>, et un code de sortie à part.</p>
+      </div>
+      <div class="carte">
+        <h3>Conventions — contre quelles règles</h3>
+        <p>Il lit les règles que <em>votre</em> dépôt a écrites et cite le fichier et la ligne. Un dépôt qui n'en documente aucune s'entend le dire, plutôt que de se voir reprocher des règles que personne n'a écrites.</p>
+      </div>
+      <div class="carte">
+        <h3>Spec — contre quelle demande</h3>
+        <p>Le code fait-il ce qui était demandé ? Ce qui manque bloque et cite l'exigence entre guillemets ; ce qui déborde est signalé sans bloquer. Sans spec fournie, il le déclare au lieu d'inventer.</p>
+      </div>
+    </div>
+
+    <div class="texte">
+      <p class="these">
+        Rien trouvé n'est pas rien à trouver.<br>Et « pas pu juger » n'est pas « rien trouvé ».
+      </p>
     </div>
 
     <div class="enveloppe grille grille-3">
       <div class="carte">
-        <div class="couv"><div class="couv-piste"><div class="couv-part pleine" style="width:100%"></div></div><span class="couv-txt">100 %</span></div>
-        <h3>Local par défaut</h3>
-        <p>Le cerveau d'audit est un modèle qui tourne sur votre machine. <span class="ic">QA_LOCAL_ONLY=on</span> garantit qu'aucun repli vers un service distant n'est possible.</p>
-      </div>
-      <div class="carte">
-        <div class="couv"><div class="couv-piste"><div class="couv-part" style="width:8%"></div></div><span class="couv-txt">1,6 Mo</span></div>
+        <div class="couv"><div class="couv-piste"><div class="couv-part" style="width:6%"></div></div><span class="couv-txt">1,1 Mo</span></div>
         <h3>Installation minuscule</h3>
-        <p>Les dépendances lourdes — SDK cloud, moteurs d'analyse syntaxique — sont optionnelles et ne s'installent que si vous les demandez.</p>
+        <p>Mesuré le 8 août 2026 dans un dossier vierge : <b>1,09 Mo</b>, dépendances comprises. Les paquets lourds — SDK, moteurs d'analyse syntaxique — sont optionnels et ne s'installent que si vous les demandez.</p>
       </div>
       <div class="carte">
-        <div class="couv"><div class="couv-piste"><div class="couv-part pleine" style="width:100%"></div></div><span class="couv-txt">0 €</span></div>
-        <h3>Coût par audit</h3>
-        <p>Aucun jeton facturé, aucun quota. Auditez à chaque commit si vous voulez : la seule limite est le temps de calcul de votre machine.</p>
+        <h3>Indépendant du générateur</h3>
+        <p>Ce n'est pas un auto-contrôle. C'est un processus séparé, qui n'obéit ni au modèle qui a écrit le code, ni à l'agent qui l'appelle. Aucun outil MCP exposé ne permet de lui dire « ignore ce constat ».</p>
+      </div>
+      <div class="carte">
+        <h3>Souverain, si vous le voulez</h3>
+        <p><span class="ic">--cerveau ollama</span> fait tourner l'audit sans qu'un octet de votre code quitte la machine, et <span class="ic">QA_LOCAL_ONLY=on</span> interdit tout repli distant. C'est une <b>option assumée</b> — pas le réglage par défaut, parce qu'un modèle local rend des verdicts moins sûrs et que nous préférons le dire.</p>
       </div>
     </div>
   </div>
@@ -579,7 +656,7 @@
 
 <footer>
   <div class="enveloppe pile-serre">
-    <div class="marque"><b>Mango QA</b><span>audit fantôme · six branches · couverture déclarée</span></div>
-    <p>Maquette produit — les chiffres cités proviennent des mesures du 5 août 2026 sur corpus étiqueté et sur projet réel.</p>
+    <div class="marque"><b>Mango QA</b><span>audit fantôme · sept branches · périmètre déclaré</span></div>
+    <p>Maquette produit — les chiffres cités proviennent des mesures du <b>8 août 2026</b>, cerveau <span class="ic">claude-opus-5</span>, sur corpus étiqueté et sur projet réel. Aucun chiffre de l'ère du cerveau local n'y subsiste.</p>
   </div>
 </footer>

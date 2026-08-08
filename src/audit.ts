@@ -58,7 +58,7 @@ export const ALL_BRANCHES: Branch[] = [
 ]
 
 export interface AuditOptions {
-  /** Sous-ensemble de branches (ids). Défaut : les 6. */
+  /** Sous-ensemble de branches (ids). Défaut : toutes celles du registre. */
   only?: string[]
   /** N'auditer que ces fichiers (chemins relatifs au projet). Défaut : tout le projet. */
   changedFiles?: string[]
@@ -119,7 +119,7 @@ export interface AuditOptions {
   now?: () => number
   /** Injection (tests) — le préflight réellement exécuté. */
   preflightFn?: () => Promise<ResultatPreflight>
-  /** Injection (tests) — le registre de branches. Défaut : les 6 réelles.
+  /** Injection (tests) — le registre de branches. Défaut : les branches réelles.
    *  Sert à rejouer une panne de cerveau de bout en bout sans réseau. */
   branches?: Branch[]
 }

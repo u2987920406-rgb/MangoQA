@@ -1,0 +1,47 @@
+
+
+🥭 mangoqa — audit de D:\IA\MangoOS\workspace\abyss
+   cerveau : claude · claude-opus-5
+   portée  : projet entier
+   spec    : aucune — conformité à la demande NON jugée
+[mangoqa] rapport JSON : eval/rapports/LOT6-abyss-opus5.json
+
+  ⚪ 📋 Spec              0.0s  20 fichiers   Aucune spec fournie — rien à comparer.
+  ⚪ 🏗️ Architecture     18.5s  19/19 vus     Audit impossible : le cerveau n'a pas répondu (Claude Code returned an error result: Reached maximum number of turns (1)).
+  🟢 🔒 Sécurité         11.8s  4/4 vus       Aucune vulnérabilité concrète : pas de secret en dur, pas d'injection HTML (aucun dangerouslySetInnerHTML/innerHTML), aucun 
+appel réseau ni construction de chemin ou de requête à partir d'une entrée utilisateur.
+  🔴 ♿ Accessibilité    30.1s  13/13 vus     La carte créature du catalogue n'est ouvrable qu'à la souris (div onClick sans rôle ni gestion clavier), et les champs de filtre 
+du catalogue n'ont aucun nom accessible.
+  🔴 ⚡ Performance      38.3s  19/19 vus     L'état de scroll vit dans App et re-rend tout l'arbre (catalogue de 14 cartes, 5 zones, quiz) à ~60 fps pendant la descente.
+  🟢 🧪 Tests            14.3s  19/19 vus     Projet vitrine sans logique métier critique : filtres/tri du catalogue, favoris localStorage et score du quiz sont de la logique 
+de présentation embarquée dans les composants, l'absence de tests n'est pas bloquante ici.
+  🟢 🎨 Design System    17.1s  14/14 vus     Rien de bloquant : l'échelle d'espacement (py-20, p-4/6/8, gap-3/4/6) et la hiérarchie typo sont régulières, mais les couleurs 
+de marque sont dupliquées en dur (#061325, #020812, #F2A33C, #E8624A répétés dans Catalogue/DiveBook/Hero/Navigation/Quiz) alors que index.css définit déjà --abyss-mid, 
+--abyss-deep, --mango, --coral et les tokens shadcn (--primary/--accent/--destructive) qui restent inutilisés — je suggère de mapper ces variables dans @theme (ex. 
+--color-mango) pour écrire bg-mango/text-abyss-deep au lieu des hex, et d'harmoniser les rayons (les composants ABYSS utilisent rounded-xl/2xl tandis que ui/button, ui/badge 
+et ui/input restent en rounded-md, d'où deux langages visuels si on les mélange).
+
+  COUVERTURE : complète — 20 fichiers lus et vus en entier.
+
+  SPEC : aucune fournie — l'audit ne dit PAS si le code fait ce qui était demandé.
+
+  CONVENTIONS : 34 règle(s) lue(s) dans ../../CLAUDE.md
+
+  JUGEMENT — INCOMPLET
+    ⚠️ Architecture : le cerveau n'a pas répondu
+    → Une branche BLOQUANTE n'a pas jugé : aucun verdict n'est défendable.
+
+  VERDICT : 🔴 FEU ROUGE — branche accessibility (non-keyboard-accessible-card)  ⚠️ JUGEMENT INCOMPLET
+  Correctif : « Dans src/components/Catalogue.jsx, composant CreatureCard : remplacer le conteneur `<div className="abyss-reveal abyss-card-glow ... cursor-pointer" 
+onClick={() => onOpen(creature)}>` par un élément activable au clavier — soit ajouter `role="button" tabIndex={0}` + `onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' 
+') { e.preventDefault(); onOpen(creature); } }}`, soit (préférable) déplacer l'action sur un `<button type="button">` enveloppant le contenu (en gardant le 
+`e.stopPropagation()` du bouton favori, qui ne doit pas être imbriqué dans un button — dans ce cas garder le div + role/tabIndex/onKeyDown). Dans le même fichier, ajouter un 
+nom accessible aux 4 contrôles de filtre qui n'ont aujourd'hui qu'un placeholder ou rien : `aria-label="Rechercher une créature"` sur l'`<input type="text">`, 
+`aria-label="Filtrer par zone"` sur le `<select value={zoneFilter}>`, `aria-label="Filtrer par bioluminescence"` sur le `<select value={bioFilter}>`, `aria-label="Trier les 
+créatures"` sur le `<select value={sortBy}>`. Enfin, dans src/components/Navigation.jsx, le bouton compteur de favoris (desktop, `onClick={() => handleClick("carnet")}`) ne 
+contient qu'un SVG cœur : lui ajouter `aria-label="Carnet de plongée"`. »
+  Règle : WCAG 2.2 2.1.1 (Clavier) ; 4.1.2 / 1.3.1 (nom accessible des contrôles)
+  Durée : 42.5s
+
+
+

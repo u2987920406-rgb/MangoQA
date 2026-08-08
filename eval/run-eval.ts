@@ -31,7 +31,8 @@ import { accessibility } from '../src/branches/accessibility.js'
 import { performance } from '../src/branches/performance.js'
 import { tests } from '../src/branches/tests.js'
 import { designSystem } from '../src/branches/design-system.js'
-import { askLLM } from '../src/llm.js'
+import { askLLM, cerveauPrimaire } from '../src/llm.js'
+import { estPanne } from '../src/verdict.js'
 import { CORPUS, corpusSummary, type BranchId, type EvalCase } from './corpus.js'
 
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -70,7 +71,12 @@ type Outcome =
   | 'rate'           // défaut injecté ET la branche dit "pass"     → ❌ le trou
   | 'faux-positif'   // rien à trouver ET la branche dit "fail"     → ❌ le bruit
   | 'correct-pass'   // rien à trouver ET la branche dit "pass"     → ✅
-  | 'abstention'     // la branche dit "skip" (elle n'a pas jugé)
+  | 'abstention'     // la branche a JUGÉ et décliné ("pas ma spécialité") — un avis rendu
+  // (2026-08-08) L'auditeur n'a PAS PU juger : cerveau injoignable, réponse hors contrat.
+  // Distinct d'une abstention de jugement, et exclu de tous les dénominateurs de qualité :
+  // un appel qui n'a jamais abouti ne dit rien sur la capacité à trouver un défaut.
+  // Compté et publié à part — le taire flatterait la mesure autant que l'inverse la noircit.
+  | 'panne'
   | 'non-pertinent'  // défaut injecté MAIS relevant() = [] : trou de FILTRAGE
   // (2026-08-05) Cas propre ET relevant() = [] : la branche n'avait rien à juger dans
   // son domaine. Auparavant compté en `correct-pass` — c'est-à-dire porté au crédit de
@@ -141,7 +147,20 @@ async function observe(c: EvalCase, branchId: BranchId, pass: number): Promise<O
   const durationMs = Date.now() - started
 
   let outcome: Outcome
-  if (finding.status === 'skip') outcome = 'abstention'
+  // (2026-08-08, lot 6 — faille L6-c) Toutes les abstentions ne se valent pas, et
+  // l'instrument avait UN LOT DE RETARD sur le produit qu'il mesure : depuis le lot 2,
+  // `BranchFinding.abstention` distingue un jugement rendu (« pas ma spécialité ») d'une
+  // PANNE de l'auditeur (cerveau injoignable, réponse hors contrat). Le harnais les
+  // fondait dans un seul « abstention ».
+  //
+  // Conséquence mesurée : 3 pannes transitoires du SDK Claude (`Reached maximum number
+  // of turns`) ont fait tomber architecture à 3/4 et tests à 1/2 — des scores de
+  // JUGEMENT dégradés par des incidents de RÉSEAU. Une panne est un non-événement pour
+  // la qualité de jugement, exactement comme `hors-perimetre` : on la compte à part et
+  // on la publie, on ne la laisse pas noircir un taux de détection.
+  //
+  // Le harnais lit désormais `estPanne`, LA MÊME fonction que la production.
+  if (finding.status === 'skip') outcome = estPanne(finding.abstention) ? 'panne' : 'abstention'
   else if (expected === 'fail') outcome = finding.status === 'fail' ? 'detecte' : 'rate'
   else outcome = finding.status === 'fail' ? 'faux-positif' : 'correct-pass'
 
@@ -191,7 +210,10 @@ interface BranchStats {
   jugementsPropres: number
   /** Observations propres écartées faute de fichier dans le domaine de la branche. */
   horsPerimetre: number
+  /** La branche a JUGÉ et décliné — un avis rendu, pas un trou. */
   abstentions: number
+  /** L'auditeur n'a PAS PU juger (panne du cerveau). Hors de tous les dénominateurs. */
+  pannes: number
   mentions: { attendues: number; obtenues: number }
   /** Nombre de cas dont le verdict A CHANGÉ entre deux passes (si --repeat > 1). */
   instables: number
@@ -209,22 +231,37 @@ function aggregate(obs: Observation[]): BranchStats[] {
       if (!parCas.has(o.caseId)) parCas.set(o.caseId, [])
       parCas.get(o.caseId)!.push(o)
     }
+    // Une PANNE ne compte pas comme un verdict différent : deux passes dont l'une n'a
+    // jamais abouti ne prouvent aucune instabilité de jugement.
     let instables = 0
     for (const list of parCas.values()) {
-      if (new Set(list.map((o) => o.got)).size > 1) instables++
+      const jugees = list.filter((o) => o.outcome !== 'panne')
+      if (new Set(jugees.map((o) => o.got)).size > 1) instables++
     }
 
+    // Détection : un cas compte s'il a été détecté à CHAQUE passe qui a réellement
+    // abouti, et s'il en reste au moins une. Un cas dont toutes les passes sont tombées
+    // en panne sort du dénominateur — le compter en échec ferait porter à la qualité de
+    // jugement le poids d'un incident réseau.
+    const casDefautJuges = [...parCas.values()].filter(
+      (l) => l[0].expected === 'fail' && l.some((o) => o.outcome !== 'panne'),
+    )
     out.push({
       branch,
-      casDefaut: [...parCas.values()].filter((l) => l[0].expected === 'fail').length,
-      detectes: [...parCas.values()].filter((l) => l[0].expected === 'fail' && l.every((o) => o.outcome === 'detecte')).length,
+      casDefaut: casDefautJuges.length,
+      detectes: casDefautJuges.filter((l) =>
+        l.filter((o) => o.outcome !== 'panne').every((o) => o.outcome === 'detecte'),
+      ).length,
       rates: mine.filter((o) => o.outcome === 'rate').length,
       nonPertinents: mine.filter((o) => o.outcome === 'non-pertinent').length,
       casPropres: [...parCas.values()].filter((l) => l[0].expected === 'pass').length,
       fauxPositifs: mine.filter((o) => o.outcome === 'faux-positif').length,
-      jugementsPropres: mine.filter((o) => o.expected === 'pass' && o.outcome !== 'hors-perimetre').length,
+      jugementsPropres: mine.filter(
+        (o) => o.expected === 'pass' && o.outcome !== 'hors-perimetre' && o.outcome !== 'panne',
+      ).length,
       horsPerimetre: mine.filter((o) => o.outcome === 'hors-perimetre').length,
       abstentions: mine.filter((o) => o.outcome === 'abstention').length,
+      pannes: mine.filter((o) => o.outcome === 'panne').length,
       mentions: {
         attendues: mine.filter((o) => o.mentioned !== undefined).length,
         obtenues: mine.filter((o) => o.mentioned === true).length,
@@ -257,27 +294,42 @@ function report(obs: Observation[], stats: BranchStats[], totalMs: number): stri
   // l'environnement donnait un rapport affirmant qu'un repli Claude était actif alors
   // qu'il ne l'était pas. Un harnais de mesure qui se trompe sur ses propres conditions
   // est exactement le défaut que ce projet existe pour traquer.
+  // (2026-08-08, lot 6 — faille L6-a) Ce bloc lisait `QA_OLLAMA_MODEL` et IGNORAIT
+  // `QA_BRAIN`. Il a été écrit avant que le cerveau devienne sélectionnable (lot 0), et
+  // personne ne l'a mis à jour : la mesure du corpus sous Opus 5 s'est donc annoncée
+  // « cerveau qwen2.5-coder:14b, repli Claude ACTIF » alors qu'aucun octet n'était parti
+  // vers Ollama. Prouvé en pointant `OLLAMA_URL` sur un port mort : l'audit répond quand
+  // même, en 9,8 s, sans une seule tentative de repli.
+  //
+  // C'est la DEUXIÈME fois que l'en-tête de ce harnais se trompe sur ses propres
+  // conditions (cf. J2-d, corrigé le 2026-08-05). Le harnais lit désormais la MÊME
+  // fonction que la production — `cerveauPrimaire()` — au lieu de deviner d'après une
+  // variable d'environnement. Un instrument qui décrit mal ses conditions ne mesure rien.
   const strict = /^(on|1|true|yes)$/i.test((process.env.QA_LOCAL_ONLY ?? '').trim())
-  const modele = process.env.QA_OLLAMA_MODEL ?? '(non défini)'
+  const primaire = cerveauPrimaire()
   const timeoutS = Number(process.env.QA_OLLAMA_TIMEOUT_MS ?? 25_000) / 1000
   L.push(
-    `> Passes : **${REPEAT}** · cerveau : **\`${modele}\`** · timeout ${timeoutS} s · ` +
-      (strict
-        ? 'repli Claude **COUPÉ** (`QA_LOCAL_ONLY=on`) — un échec local reste un échec compté'
-        : `repli Claude **ACTIF** vers \`${process.env.QA_MODEL ?? 'sonnet'}\` ⚠️ une réponse peut ne PAS venir du modèle mesuré`),
+    primaire === 'claude'
+      ? `> Passes : **${REPEAT}** · cerveau : **\`${process.env.QA_MODEL ?? 'claude-opus-5'}\`** ` +
+          '(`QA_BRAIN=claude`, primaire) · **aucun repli** — un échec reste un échec compté'
+      : `> Passes : **${REPEAT}** · cerveau : **\`${process.env.QA_OLLAMA_MODEL ?? '(non défini)'}\`** ` +
+          `(\`QA_BRAIN=ollama\`, primaire) · timeout ${timeoutS} s · ` +
+          (strict
+            ? 'repli Claude **COUPÉ** (`QA_LOCAL_ONLY=on`) — un échec local reste un échec compté'
+            : `repli Claude **ACTIF** vers \`${process.env.QA_MODEL ?? 'claude-opus-5'}\` ⚠️ une réponse peut ne PAS venir du modèle mesuré`),
   )
   L.push(`> Durée totale : ${(totalMs / 1000).toFixed(1)} s · observations : ${obs.length}`)
   L.push('')
   L.push('## Résultat par branche')
   L.push('')
-  L.push('| Branche | Détection | Ratés | Non pertinents | Faux positifs | Abstentions | Instables | Durée moy. |')
-  L.push('|---|---|---|---|---|---|---|---|')
+  L.push('| Branche | Détection | Ratés | Non pertinents | Faux positifs | Abstentions | Pannes | Instables | Durée moy. |')
+  L.push('|---|---|---|---|---|---|---|---|---|')
   for (const st of stats) {
     // Dénominateur des faux positifs = observations propres RÉELLEMENT jugées. Les
     // `hors-perimetre` sont affichés à côté, jamais fondus dedans.
     const fp = `**${st.fauxPositifs}/${st.jugementsPropres}**${st.horsPerimetre ? ` (+${st.horsPerimetre} hors périmètre)` : ''}`
     L.push(
-      `| ${st.branch} | **${st.detectes}/${st.casDefaut}** (${pct(st.detectes, st.casDefaut)}) | ${st.rates} | ${st.nonPertinents} | ${fp} | ${st.abstentions} | ${REPEAT > 1 ? st.instables : '—'} | ${(st.dureeMoyenneMs / 1000).toFixed(1)} s |`,
+      `| ${st.branch} | **${st.detectes}/${st.casDefaut}** (${pct(st.detectes, st.casDefaut)}) | ${st.rates} | ${st.nonPertinents} | ${fp} | ${st.abstentions} | ${st.pannes || '—'} | ${REPEAT > 1 ? st.instables : '—'} | ${(st.dureeMoyenneMs / 1000).toFixed(1)} s |`,
     )
   }
   L.push('')
@@ -386,9 +438,11 @@ async function main(): Promise<void> {
         : o.outcome === 'faux-positif' ? '⚠ FAUX POSITIF'
         : o.outcome === 'non-pertinent' ? '🚫 non pertinent'
         // Non-événement : à ne PAS afficher comme une abstention, qui elle est un
-        // vrai échec de jugement (réponse illisible, erreur interne).
+        // jugement rendu.
         : o.outcome === 'hors-perimetre' ? '– hors périmètre'
-        : '· abstention'
+        // Une PANNE se voit : c'est un appel qui n'a jamais abouti, pas un avis.
+        : o.outcome === 'panne' ? '⛔ PANNE (non jugé)'
+        : '· abstention (avis rendu)'
       console.log(`${mark} (${(o.durationMs / 1000).toFixed(1)} s)`)
     }
   }

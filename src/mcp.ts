@@ -245,8 +245,8 @@ export async function creerServeur() {
     {
       title: 'Auditer un projet',
       description:
-        "Audite un dossier de code avec les 6 branches de Mango QA (architecture, sécurité, " +
-        'accessibilité, performance, tests, design system) et rend un verdict Feu Vert / Feu Rouge.\n\n' +
+        `Audite un dossier de code avec les ${ALL_BRANCHES.length} branches de Mango QA ` +
+        `(${IDS_BRANCHES.join(', ')}) et rend un verdict Feu Vert / Feu Rouge.\n\n` +
         "IMPORTANT : le résultat contient une COUVERTURE. Lis-la avant le verdict. Si " +
         '`couvertureComplete` est faux, l\'audit n\'a pas porté sur tout le code : rapporte-le à ' +
         "l'utilisateur et ne conclus PAS qu'un défaut est absent.\n\n" +
@@ -257,7 +257,10 @@ export async function creerServeur() {
         only: z
           .array(z.enum(IDS_BRANCHES as [string, ...string[]]))
           .optional()
-          .describe(`Sous-ensemble de branches à exécuter. Défaut : les 6. Valeurs : ${IDS_BRANCHES.join(', ')}.`),
+          .describe(
+            `Sous-ensemble de branches à exécuter. Défaut : les ${ALL_BRANCHES.length}. ` +
+              `Valeurs : ${IDS_BRANCHES.join(', ')}.`,
+          ),
         cap: z
           .number()
           .int()

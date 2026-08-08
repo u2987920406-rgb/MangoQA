@@ -63,6 +63,7 @@ describe('CLI — options de cerveau', () => {
   const opts = (argv: string[]) => {
     const r = parseArgs(argv)
     if ('aide' in r) throw new Error('aide inattendue')
+    if ('commande' in r) throw new Error('commande inattendue')
     return r
   }
 

@@ -48,12 +48,12 @@ Deux outils : `auditer_projet` et `lister_branches`.
 
 ### Ce qui n'est PAS installé par défaut
 
-Le cerveau primaire est **Ollama**, joint en HTTP : zéro dépendance. Les paquets lourds
-sont donc des **dépendances de pair optionnelles**, à n'installer que si on s'en sert :
+La bibliothèque n'a que deux dépendances de production ; tout le reste est en
+**dépendances de pair optionnelles**, à n'installer que si on s'en sert :
 
 | Paquet | Poids | À quoi il sert |
 |---|---|---|
-| `@anthropic-ai/claude-agent-sdk` | ~280 Mo | Cerveau de **repli** si Ollama est injoignable. Inutile en `QA_LOCAL_ONLY=on` |
+| `@anthropic-ai/claude-agent-sdk` | ~280 Mo | Le cerveau **recommandé** (`QA_BRAIN=claude`, ADR-001 D1). Inutile en `--cerveau ollama` / `QA_LOCAL_ONLY=on` |
 | `web-tree-sitter` + `tree-sitter-wasms` | ~50 Mo | Auditeur de Flux (chemin MangoOS). La CLI ne l'appelle jamais |
 | `@modelcontextprotocol/sdk` + `zod` | ~16 Mo | Serveur MCP seulement |
 
@@ -94,7 +94,8 @@ MangoOS écrit  <projet>/.mangoqa/phase-complete.json   (PhaseSignal)
 Mango QA  ──────────────────────────────────────────────────
         │   3 VISAGES + Flux/Suite/Observateur (abonnement Claude, $0)
         │
-        │   🏛️ Visage 1 : JUGE (6 branches d'audit en parallèle)
+        │   🏛️ Visage 1 : JUGE (7 branches d'audit en parallèle)
+        │      📋 spec (le travail, pas le code — si --spec fourni)
         │      🏗️ architecture · 🔒 sécurité · ♿ accessibilité
         │      ⚡ performance · 🧪 tests · 🎨 design-system (conseil)
         │      ─► verdicts binaires (Feu Vert/Rouge) dans <projet>/.mangoqa/

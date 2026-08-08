@@ -12,6 +12,7 @@ import type { AuditCoverage } from '../../src/types.js'
 const opts = (argv: string[]): CliOptions => {
   const r = parseArgs(argv)
   if ('aide' in r) throw new Error('aide inattendue')
+  if ('commande' in r) throw new Error('commande inattendue')
   return r
 }
 

@@ -19,6 +19,7 @@
 // pas forcément un. Les deux se signalent, un seul bloque. Confondre les deux ferait
 // d'un auditeur un censeur.
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import type { FsLike } from './project-files.js'
 import { realFs } from './project-files.js'
 
@@ -126,10 +127,69 @@ export function extraireExigences(contenu: string): Exigence[] {
   return out
 }
 
-/** Lit le fichier de spec désigné par `--spec`.
+/** Une valeur de `--spec` qui désigne une ISSUE plutôt qu'un fichier : une URL
+ *  GitHub/GitLab, ou la forme courte `#42`. */
+const ISSUE = /^(#\d+|https?:\/\/\S+\/(issues|-\/issues)\/\d+\/?)$/i
+
+/** Récupère le corps d'une issue via le CLI `gh`, **déjà installé et authentifié chez
+ *  l'utilisateur**.
+ *
+ *  (2026-08-08, lot 5 — ferme la faille L4-a) Aucun code d'authentification maison :
+ *  pas de jeton à stocker, pas de secret qui traîne dans une variable d'environnement,
+ *  pas de surface d'attaque ajoutée à un outil dont l'argument est la confiance. On
+ *  emprunte l'authentification que le développeur a déjà consentie à son terminal, et
+ *  on ne la voit jamais passer.
+ *
+ *  L'absence de `gh` est déclarée avec sa piste de résolution — jamais un
+ *  `ENOENT: spawn gh` brut, qui ressemble à un bug de Mango QA. */
+function lireIssue(ref: string): string {
+  const args = ref.startsWith('#')
+    ? ['issue', 'view', ref.slice(1), '--json', 'title,body', '--template', '{{.title}}\n\n{{.body}}']
+    : ['issue', 'view', ref, '--json', 'title,body', '--template', '{{.title}}\n\n{{.body}}']
+  try {
+    return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 })
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code
+    if (code === 'ENOENT') {
+      throw new SpecInutilisableError(
+        `Impossible de lire l'issue ${ref} : le CLI « gh » n'est pas installé.\n` +
+          "Mango QA n'implémente délibérément aucune authentification propre — il emprunte " +
+          "celle que vous avez déjà donnée à votre terminal.\n" +
+          'Deux issues : installez gh (https://cli.github.com) et faites `gh auth login`, ' +
+          "ou passez --spec avec un FICHIER (l'issue collée dans un .md fait très bien l'affaire).",
+      )
+    }
+    const stderr = (err as { stderr?: Buffer | string })?.stderr
+    const detail = (typeof stderr === 'string' ? stderr : stderr?.toString('utf8'))?.trim()
+    throw new SpecInutilisableError(
+      `Impossible de lire l'issue ${ref}${detail ? ` : ${detail.split('\n')[0]}` : ''}\n` +
+        'Vérifiez `gh auth status`, et que vous êtes bien dans le dépôt qui porte cette issue.',
+    )
+  }
+}
+
+/** Lit la spec désignée par `--spec` : un FICHIER, ou une ISSUE (`#42`, ou une URL).
  *
  *  Lève plutôt que de rendre un scan vide : voir `SpecInutilisableError`. */
 export function scanSpec(specPath: string, fsx: FsLike = realFs): SpecScan {
+  if (ISSUE.test(specPath.trim())) {
+    const brut = lireIssue(specPath.trim())
+    const toutes = extraireExigences(brut.length > MAX_SPEC_CHARS ? brut.slice(0, MAX_SPEC_CHARS) : brut)
+    const capIssue = maxExigences()
+    const retenues = toutes.slice(0, capIssue)
+    if (retenues.length === 0) {
+      throw new SpecInutilisableError(
+        `Aucune exigence lisible dans l'issue ${specPath}.\n` +
+          'Une issue exploitable énumère ce qui est attendu — des puces, des cases à cocher, ' +
+          'ou des phrases de demande. Une issue de pure discussion ne peut pas être confrontée au code.',
+      )
+    }
+    // L'identifiant reste `spec:<ligne>` : la ligne est celle du TEXTE DE L'ISSUE, pas
+    // d'un fichier du disque. Le rapport cite le texte entre guillemets, donc le lecteur
+    // retrouve l'exigence dans l'issue sans avoir besoin d'un numéro de ligne local.
+    return { file: specPath, exigences: retenues, dropped: toutes.length - retenues.length, vide: false }
+  }
+
   const abs = path.resolve(specPath)
   let contenu: string
   try {
@@ -137,6 +197,7 @@ export function scanSpec(specPath: string, fsx: FsLike = realFs): SpecScan {
       throw new SpecInutilisableError(
         `Spec introuvable : ${specPath}\n` +
           "Donnez un fichier lisible (une description de tâche, un ticket exporté, un cahier des charges), " +
+          'une issue (`#42` ou son URL), ' +
           'ou retirez --spec pour auditer sans spec — l\'audit le déclarera alors explicitement.',
       )
     }

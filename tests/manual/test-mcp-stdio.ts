@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ALL_BRANCHES } from '../../src/audit.js'
 
 const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -78,7 +79,15 @@ try {
   const structure = (res as { structuredContent?: { branches?: Array<{ id: string; bloquante: boolean }> } })
     .structuredContent
   verifier('lister_branches rend un structuredContent', Boolean(structure?.branches))
-  verifier('les 6 branches sont listées', structure?.branches?.length === 6, String(structure?.branches?.length))
+  // Le nombre attendu vient du REGISTRE, pas d'une constante recopiée : ce test affirmait
+  // « les 6 branches » et n'a pas bronché quand le lot 4 en a ajouté une septième — il
+  // vit dans `tests/manual/`, donc hors de la suite automatique. Un chiffre en dur dans
+  // un test qui ne tourne pas tout seul est un mensonge à retardement.
+  verifier(
+    `les ${ALL_BRANCHES.length} branches du registre sont listées`,
+    structure?.branches?.length === ALL_BRANCHES.length,
+    String(structure?.branches?.length),
+  )
   verifier(
     'design-system est déclarée non bloquante',
     structure?.branches?.find(b => b.id === 'design-system')?.bloquante === false,
