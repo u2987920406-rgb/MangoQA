@@ -80,6 +80,24 @@ export function rendreTexteMcp(r: AuditReport): string {
     l.push("   Ne conclus pas à l'absence d'un défaut à partir de cet audit.")
   }
 
+  // SPEC — contre quelle DEMANDE. C'est la déclaration la plus importante pour un
+  // assistant : il rapporte volontiers « ton projet est bon » là où la seule question de
+  // son utilisateur est « est-ce que ça fait ce que j'ai demandé ? ».
+  const sp = r.spec
+  l.push('')
+  if (sp.file === null) {
+    l.push(
+      "SPEC : aucune fournie. Cet audit ne dit RIEN sur la conformité à la demande — il juge la " +
+        "qualité du code, pas le fait qu'il réponde au besoin. Ne conclus pas que le travail est complet.",
+    )
+  } else {
+    l.push(`SPEC : ${sp.exigencesProvided} exigence(s) lue(s) dans ${sp.file}.`)
+    for (const e of sp.citedTexts) l.push(`   NON SATISFAITE ${e.id} — « ${e.text} »`)
+    if (sp.rejected.length) {
+      l.push(`   ⚠️ Citation(s) rejetée(s), sans exigence réelle : ${sp.rejected.join(', ')}`)
+    }
+  }
+
   // CONVENTIONS — contre quoi le jugement a été rendu. Le cas « aucune » compte autant
   // que l'autre : sans lui, un assistant conclut volontiers « conforme aux conventions
   // du projet » alors que le projet n'en a jamais écrit une seule.
@@ -160,6 +178,13 @@ export function rendreStructureMcp(r: AuditReport): Record<string, unknown> {
         raison: LIBELLE_CAUSE[b.cause],
         bloquante: b.blocking,
       })),
+    },
+    spec: {
+      fournie: r.spec.file !== null,
+      fichier: r.spec.file,
+      exigencesFournies: r.spec.exigencesProvided,
+      exigencesNonSatisfaites: r.spec.citedTexts,
+      citationsRejetees: r.spec.rejected,
     },
     conventions: r.conventions
       ? {
@@ -245,6 +270,14 @@ export async function creerServeur() {
           .positive()
           .optional()
           .describe('Branches exécutées en parallèle. Défaut 1 (cerveau local mono-GPU).'),
+        spec: z
+          .string()
+          .optional()
+          .describe(
+            "Chemin d'un fichier décrivant ce qui était DEMANDÉ (ticket, cahier des charges). " +
+              'Active la branche Spec : le code fait-il le travail attendu ? Sans lui, cette question ' +
+              "n'est pas jugée et le résultat le déclare.",
+          ),
       },
       outputSchema: {
         verdict: z.enum(['green', 'red']),
@@ -268,6 +301,20 @@ export async function creerServeur() {
               bloquante: z.boolean(),
             }),
           ),
+        }),
+        spec: z.object({
+          fournie: z
+            .boolean()
+            .describe(
+              "Faux = aucune spec n'a été donnée. L'audit ne dit alors RIEN sur la conformité à la " +
+                "demande : ne rapporte jamais un feu vert comme « ça fait ce qui était demandé ».",
+            ),
+          fichier: z.string().nullable(),
+          exigencesFournies: z.number(),
+          exigencesNonSatisfaites: z
+            .array(z.object({ id: z.string(), text: z.string() }))
+            .describe('Exigences jugées non satisfaites, avec leur texte exact — cite-le à ton utilisateur.'),
+          citationsRejetees: z.array(z.string()),
         }),
         conventions: z
           .object({
@@ -327,7 +374,7 @@ export async function creerServeur() {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ dossier, only, cap, concurrency }) => {
+    async ({ dossier, only, cap, concurrency, spec }) => {
       // (2026-08-08, faille L2-a CLOSE) Le `cap` est un PARAMÈTRE de cet appel, plus une
       // écriture dans l'environnement du process. Ce serveur est long-vivant : un seul
       // appel passant `cap` imposait auparavant sa couverture réduite à tous les
@@ -336,6 +383,7 @@ export async function creerServeur() {
         const rapport = await auditProject(dossier, {
           concurrency: concurrency ?? 1,
           ...(cap !== undefined ? { cap } : {}),
+          ...(spec !== undefined ? { spec } : {}),
           ...(only?.length ? { only } : {}),
         })
         return {

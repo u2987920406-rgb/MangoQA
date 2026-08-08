@@ -9,6 +9,7 @@
 // `project-files.ts` qui dépend de ce fichier. Le cycle n'existe donc qu'au niveau des
 // types, jamais à l'exécution.
 import type { ConventionsScan } from './conventions.js'
+import type { SpecScan } from './spec.js'
 
 /** Signal émis par MangoOS après chaque commit de phase
  *  (mangoqa.ts → emitPhaseComplete). Écrit dans <projet>/.mangoqa/phase-complete.json */
@@ -156,6 +157,10 @@ export interface AuditContext {
    *  Un scan présent mais `absent: true` est une information DIFFÉRENTE : le projet a
    *  été regardé et ne documente rien, ce qu'on dit au modèle pour qu'il n'invente pas. */
   conventions?: ConventionsScan
+  /** (2026-08-08, lot 4) Ce qui avait été DEMANDÉ, localisé ligne par ligne.
+   *  `undefined` = aucune spec fournie → la branche Spec s'abstient au lieu d'inventer
+   *  une demande, et les autres branches ne voient rien changer. */
+  spec?: SpecScan
 }
 
 /** Ce que le modèle a RÉELLEMENT vu, mesuré au moment du rendu du prompt
@@ -205,6 +210,10 @@ export interface BranchFinding {
   abstention?: Abstention
   /** (2026-08-08, lot 3) Les règles du dépôt que cette trouvaille invoque. */
   conventions?: CitationsConventions
+  /** (2026-08-08, lot 4) Les exigences de la spec que cette trouvaille invoque.
+   *  Même contrat de vérification que `conventions` — une citation qui ne se résout
+   *  pas à une exigence réelle est rejetée, et le reste visible. */
+  spec?: CitationsConventions
 }
 
 /** Ce que le modèle a cité comme règle du dépôt, **après vérification**.

@@ -18,6 +18,7 @@ import { auditProject, ALL_BRANCHES, type AuditReport, type BranchResultLite } f
 import { CERVEAUX, cerveauPrimaire, type Cerveau } from './llm.js'
 import { LIBELLE_CAUSE, estNonVerifie } from './verdict.js'
 import { CerveauInutilisableError } from './preflight.js'
+import { SpecInutilisableError } from './spec.js'
 import { fichiersModifies } from './git.js'
 
 const VERSION = '2.1.0'
@@ -54,6 +55,9 @@ OPTIONS
                             sans ref  → ce qui n'est pas encore commité (avant de pousser)
                             avec ref  → ce qui a divergé depuis ce point (avant de fusionner)
                                         ex. --diff main, --diff v1.2.0, --diff a1b2c3d
+  --spec <fichier>        Ce qui était DEMANDÉ (ticket, cahier des charges, description
+                          de tâche). Active la branche Spec : le code fait-il ce qu'on
+                          attendait ? Sans elle, l'audit le déclare et ne juge pas dessus.
   --cerveau <nom>         Cerveau d'audit : ${CERVEAUX.join(' | ')}. Défaut : ollama.
                           RECOMMANDÉ : claude (qualité de jugement nettement supérieure).
   --modele <id>           Modèle du cerveau claude. Défaut : claude-opus-5.
@@ -94,6 +98,8 @@ export interface CliOptions {
   modele?: string
   /** `--diff` demandé. `ref` absent = travail non commité. */
   diff?: { ref?: string }
+  /** Fichier décrivant ce qui était demandé (`--spec`). */
+  spec?: string
   json: boolean
   jsonFichier?: string
   exigerCouverture: boolean
@@ -160,6 +166,9 @@ export function parseArgs(argv: string[]): CliOptions | { aide: string } {
       }
       case '--modele':
         opts.modele = valeur()
+        break
+      case '--spec':
+        opts.spec = valeur()
         break
       case '--diff':
         // Référence FACULTATIVE, comme `--json`. Un argument qui commence par `-`
@@ -251,6 +260,26 @@ export function rendreRapport(r: AuditReport): string {
       )
     }
     l.push('    → Le verdict ci-dessous ne porte PAS sur tout le code.')
+  }
+  l.push('')
+
+  // SPEC — la quatrième déclaration : contre quelle DEMANDE on a jugé. Son cas
+  // « absente » compte autant : un feu vert rendu sans spec ne dit rien sur la seule
+  // question que se pose celui qui a commandé le travail.
+  const sp = r.spec
+  if (sp.file === null) {
+    l.push("  SPEC : aucune fournie — l'audit ne dit PAS si le code fait ce qui était demandé.")
+  } else {
+    l.push(`  SPEC : ${sp.exigencesProvided} exigence(s) lue(s) dans ${sp.file}`)
+    if (sp.exigencesDropped > 0) {
+      l.push(`    ⚠️ ${sp.exigencesDropped} exigence(s) au-delà du cap, non fournies au jugement.`)
+    }
+    // L'exigence est citée ENTRE GUILLEMETS, pas seulement référencée : « spec:12 non
+    // satisfaite » obligerait le lecteur à ouvrir le fichier pour savoir de quoi on parle.
+    for (const e of sp.citedTexts) l.push(`    ✗ ${e.id} non satisfaite — « ${e.text} »`)
+    if (sp.rejected.length) {
+      l.push(`    ⚠️ Citation(s) REJETÉE(S) — aucune exigence réelle : ${sp.rejected.join(', ')}`)
+    }
   }
   l.push('')
 
@@ -386,12 +415,14 @@ export async function main(argv: string[]): Promise<number> {
     } else {
       trace('   portée  : projet entier')
     }
+    trace(opts.spec ? `   spec    : ${opts.spec}` : '   spec    : aucune — conformité à la demande NON jugée')
 
     rapport = await auditProject(opts.dossier, {
       concurrency: opts.concurrency,
       preflight: !opts.sansPreflight,
       conventions: !opts.sansConventions,
       ...(opts.cap !== undefined ? { cap: opts.cap } : {}),
+      ...(opts.spec !== undefined ? { spec: opts.spec } : {}),
       ...(opts.only ? { only: opts.only } : {}),
       ...(changedFiles ? { changedFiles } : {}),
       onBranch: opts.silencieux ? undefined : b => trace(ligneBranche(b)),
@@ -401,7 +432,7 @@ export async function main(argv: string[]): Promise<number> {
     // introuvable, ou cerveau incapable de rendre un verdict (fail-open partout
     // ailleurs). Les deux sont des erreurs d'USAGE, corrigeables par l'utilisateur,
     // jamais un défaut trouvé dans son code : d'où le code 2 et pas un feu rouge.
-    if (err instanceof CerveauInutilisableError) {
+    if (err instanceof CerveauInutilisableError || err instanceof SpecInutilisableError) {
       console.error(`[mangoqa] ⛔ ${err.message}`)
       return EXIT.USAGE
     }

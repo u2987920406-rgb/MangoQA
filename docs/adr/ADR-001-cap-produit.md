@@ -209,13 +209,43 @@ temporaire réel avec un cerveau injecté, jamais avec un vrai modèle sur un vr
 conventions de code. Le mécanisme est prouvé, sa **valeur** ne l'est pas. À mesurer au
 lot 6, sur un dépôt tiers.
 
-### Lot 4 — Axe *Spec*
+### Lot 4 — Axe *Spec* ✅ FAIT (2026-08-08)
 
-Comparer le changement à ce qui était demandé : `--spec <fichier>` ou une issue. Deux
-sorties : exigences non satisfaites, et **débordements de périmètre**.
+`--spec <fichier>` fournit ce qui était demandé ; `src/spec.ts` (déterministe, zéro LLM)
+en **localise** chaque exigence avec sa ligne, et `src/branches/spec.ts` est la **septième
+branche** — la seule qui ne juge pas le code mais le TRAVAIL. Placée **en premier** au
+registre : le premier échec bloquant porte le Feu Rouge, et quand du code ne fait pas ce
+qui était demandé, c'est le seul reproche qui compte.
 
-**Achevé quand :** l'axe cite la ligne de spec entre guillemets · l'absence de spec est
-déclarée (« aucune spec fournie »), jamais inventée.
+**La distinction structurante : ce qui manque bloque, ce qui déborde se signale.** Une
+exigence non satisfaite est un `fail` avec l'exigence citée entre guillemets ; un
+débordement de périmètre est rapporté sans jamais bloquer — faire plus que demandé peut
+être légitime, et confondre les deux ferait d'un auditeur un censeur.
+
+Trois garde-fous composés contre le faux positif : la **prudence de couverture** dans le
+prompt (« une exigence dont l'implémentation pourrait vivre dans un fichier que tu ne
+reçois pas ne compte PAS comme non satisfaite »), la **citation vérifiée** (patron du
+lot 3), et `degraderSiNonCitee` — un `fail` qui ne cite aucune exigence vérifiée devient
+une observation, parce qu'un feu rouge adossé à rien de réfutable est une opinion.
+
+Une spec **introuvable ou sans exigence lisible** lève `SpecInutilisableError` (code 2,
+aucun audit lancé) : elle n'est PAS traitée comme « pas de spec » — l'utilisateur a
+demandé qu'on juge contre un document, lui rendre un audit sans spec répondrait à une
+autre question.
+
+**Mesuré à la livraison — contrôle apparié, même code, même diff, deux specs :** contre la
+spec du lot 4 (implémenté) → `🟢 FEU VERT`, **avec un débordement relevé seul** (trois
+ajouts que la liste ne demandait pas) ; contre la spec du lot 5 (pas implémenté) →
+`🔴 FEU ROUGE`, `spec:7` citée textuellement, correctif chirurgical — **et refus motivé
+d'accuser sur trois autres exigences** dont l'implémentation pouvait vivre hors du
+périmètre lu. `tsc` propre, **309 tests verts** (18 neufs). Détail :
+`eval/rapports/LOT4-SPEC.md`.
+
+**Limites honnêtes :** un dépôt, deux specs, un modèle — le contrôle apparié écarte « il
+crie au loup sur toute spec », il ne mesure pas un taux de détection. Les specs ont été
+écrites en puces nettes à partir de ce document, pas en vrai ticket bavard et ambigu. Et
+`--spec` ne lit qu'un **fichier** : récupérer une issue demande réseau et
+authentification — consigné, pas codé.
 
 ### Lot 5 — Intégration
 

@@ -37,6 +37,7 @@ import type { AuditContext, AuditCoverage, BranchFinding, BranchStatus, Citation
 import { askOllama } from './ollama-client.js'
 import { renderFilesWithCoverage } from './fs-shared.js'
 import { conventionsBlock, indexer } from './conventions.js'
+import { indexerExigences } from './spec.js'
 
 /** Modèle Claude utilisé, en primaire comme en repli. Lecture PARESSEUSE : un
  *  appelant (CLI, test, harnais) doit pouvoir le fixer avant le premier usage. */
@@ -321,7 +322,8 @@ Réponds UNIQUEMENT par un objet JSON valide, sans aucun texte autour :
   "rejectionId": "<identifiant-court-kebab si fail, ex: missing-form-label>",
   "correctiveAction": "<action corrective CHIRURGICALE et précise si fail>",
   "ruleRef": "<référence de règle si fail, ex: WCAG 2.2 1.3.1>",
-  "conventionRefs": ["<identifiants [fichier:ligne] des conventions du dépôt invoquées, [] sinon>"]
+  "conventionRefs": ["<identifiants [fichier:ligne] des conventions du dépôt invoquées, [] sinon>"],
+  "specRefs": ["<identifiants [spec:ligne] des exigences invoquées, [] sinon>"]
 }
 Règles de décision (scepticisme méthodique, raisonnement par falsification) :
 - "skip" si la phase ne concerne pas ta spécialité (aucun élément pertinent à auditer).
@@ -446,6 +448,7 @@ export async function auditWithLLM(
       correctiveAction?: string
       ruleRef?: string
       conventionRefs?: unknown
+      specRefs?: unknown
     }>(raw)
     // (2026-08-05, J4-a) Le cerveau a RÉPONDU, mais hors contrat. C'est une PANNE de
     // l'auditeur, pas un jugement : le déclarer comme tel est tout l'objet du lot 2.
@@ -479,6 +482,8 @@ export async function auditWithLLM(
     // crédit de la trouvaille — et conservé, visible, dans `rejetees`.
     const citations = verifierCitations(parsed.conventionRefs, ctx)
     if (citations) finding.conventions = citations
+    const citationsSpec = verifierRefs(parsed.specRefs, indexerExigences(ctx.spec?.exigences ?? []))
+    if (citationsSpec) finding.spec = citationsSpec
     if (status === 'fail') {
       finding.rejectionId = (parsed.rejectionId ?? `${meta.id}-anomalie`).trim()
       finding.correctiveAction = (parsed.correctiveAction ?? finding.summary).trim()
@@ -510,8 +515,20 @@ export function verifierCitations(
   brut: unknown,
   ctx: Pick<AuditContext, 'conventions'>,
 ): CitationsConventions | undefined {
+  return verifierRefs(brut, indexer(ctx.conventions?.rules ?? []))
+}
+
+/** Le tri lui-même, indépendant de ce qui est cité.
+ *
+ *  Partagé entre les conventions (lot 3) et les exigences de spec (lot 4) : deux copies
+ *  de cette logique divergeraient, et l'une des deux finirait par accepter une citation
+ *  que l'autre rejette. C'est très exactement le défaut que le produit a trouvé chez son
+ *  propre auteur deux lots de suite. */
+export function verifierRefs(
+  brut: unknown,
+  connues: Map<string, unknown>,
+): CitationsConventions | undefined {
   if (!Array.isArray(brut) || brut.length === 0) return undefined
-  const connues = indexer(ctx.conventions?.rules ?? [])
   const citees: string[] = []
   const rejetees: string[] = []
   for (const item of brut) {

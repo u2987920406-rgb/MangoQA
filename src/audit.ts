@@ -31,15 +31,31 @@ import { readProjectFiles, projectHasTests, realFs, type FsLike, type ReadStats 
 import { buildVerdict, estPanne } from './verdict.js'
 import { CerveauInutilisableError, preflightCerveau, type ResultatPreflight } from './preflight.js'
 import { scanConventions, type ConventionsScan } from './conventions.js'
+import { scanSpec, type SpecScan } from './spec.js'
 import { architecture } from './branches/architecture.js'
 import { security } from './branches/security.js'
 import { accessibility } from './branches/accessibility.js'
 import { performance } from './branches/performance.js'
 import { tests } from './branches/tests.js'
 import { designSystem } from './branches/design-system.js'
+import { spec } from './branches/spec.js'
 
-/** Les 6 branches, dans l'ordre de PRIORITÉ du rejet (la 1ʳᵉ bloquante en échec porte le Feu Rouge). */
-export const ALL_BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
+/** Les 7 branches, dans l'ordre de PRIORITÉ du rejet (la 1ʳᵉ bloquante en échec porte
+ *  le Feu Rouge).
+ *
+ *  **Spec vient en premier** (2026-08-08, lot 4), et ce n'est pas un détail d'ordre :
+ *  quand du code ne fait pas ce qui était demandé, c'est le seul reproche qui compte.
+ *  Rendre un Feu Rouge « contraste insuffisant » sur une fonctionnalité qui n'existe pas
+ *  ferait travailler l'utilisateur sur le mauvais problème. */
+export const ALL_BRANCHES: Branch[] = [
+  spec,
+  architecture,
+  security,
+  accessibility,
+  performance,
+  tests,
+  designSystem,
+]
 
 export interface AuditOptions {
   /** Sous-ensemble de branches (ids). Défaut : les 6. */
@@ -86,6 +102,18 @@ export interface AuditOptions {
    *  puis 100 000. Porté par le contrat depuis la faille L2-a : un serveur MCP
    *  long-vivant ne peut pas régler ça par une variable de process partagée. */
   cap?: number
+  /**
+   * Chemin d'un fichier décrivant ce qui était DEMANDÉ (`--spec`). Active la branche
+   * Spec ; sans lui elle s'abstient et le rapport le déclare.
+   *
+   * (2026-08-08, lot 4) Lève `SpecInutilisableError` si le fichier est introuvable ou
+   * n'énonce aucune exigence lisible : l'utilisateur a demandé qu'on juge contre un
+   * document, lui rendre en silence un audit sans spec répondrait à une autre question
+   * que la sienne.
+   */
+  spec?: string
+  /** Injection (tests) — un scan de spec déjà fait, au lieu d'un chemin à lire. */
+  specScan?: SpecScan
   /** Injection (tests). */
   fs?: FsLike
   now?: () => number
@@ -166,6 +194,28 @@ export interface ReportConventions {
   absent: boolean
 }
 
+/** Ce qui avait été DEMANDÉ, et ce que l'audit en a fait.
+ *
+ *  (2026-08-08, lot 4) Quatrième déclaration de la même famille : `coverage` dit ce qui
+ *  a été lu, `jugement` ce qui a été jugé, `conventions` contre quelles règles maison —
+ *  celle-ci dit **contre quelle demande**. Et comme les trois autres, son cas « absent »
+ *  compte autant que l'autre : un feu vert rendu sans spec ne dit rien sur la question
+ *  « est-ce que c'est ce que j'avais demandé ? », et doit le dire. */
+export interface ReportSpec {
+  /** Fichier de spec utilisé. `null` quand aucune spec n'a été fournie. */
+  file: string | null
+  /** Exigences extraites et soumises au jugement. */
+  exigencesProvided: number
+  /** Exigences écartées par le cap (`QA_SPEC_CAP`). */
+  exigencesDropped: number
+  /** Identifiants VÉRIFIÉS invoqués par une trouvaille (exigences jugées non satisfaites). */
+  cited: string[]
+  /** Citations rejetées : le modèle a invoqué une exigence qui n'existe pas. */
+  rejected: string[]
+  /** Texte des exigences citées, pour que le rapport puisse les montrer entre guillemets. */
+  citedTexts: Array<{ id: string; text: string }>
+}
+
 export interface AuditReport {
   projectName: string
   projectDir: string
@@ -181,6 +231,9 @@ export interface AuditReport {
   jugement: ReportJugement
   /** Contre quelles règles du dépôt on a jugé. `undefined` = scan désactivé. */
   conventions?: ReportConventions
+  /** Contre quelle demande on a jugé. Toujours présent : son cas « absent » est une
+   *  information, pas un silence. */
+  spec: ReportSpec
   durationMs: number
   /** Vrai si aucun fichier auditable n'a été trouvé (dossier vide, ou hors périmètre). */
   empty: boolean
@@ -221,6 +274,11 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
   const scan: ConventionsScan | undefined =
     opts.conventions === false ? undefined : scanConventions(dir, fsx)
 
+  // La spec se lit AVANT l'audit, et son échec est fatal : mieux vaut refuser de juger
+  // que juger contre une demande qu'on n'a pas su lire.
+  const specScan: SpecScan | undefined =
+    opts.specScan ?? (opts.spec !== undefined ? scanSpec(opts.spec, fsx) : undefined)
+
   const readStats: ReadStats = { discovered: 0, read: 0, dropped: [] }
   const files: ProjectFile[] = readProjectFiles(dir, opts.changedFiles ?? [], fsx, readStats)
 
@@ -258,6 +316,7 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
       // rapporté — savoir qu'un dépôt documente 14 règles jamais confrontées à du code
       // est une information, et la taire ferait croire qu'il n'en documente aucune.
       ...(scan ? { conventions: agregerConventions(scan, []) } : {}),
+      spec: agregerSpec(specScan, []),
       durationMs: now() - t0,
       empty: true,
     }
@@ -285,6 +344,7 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
             retex,
             testsElsewhereInProject: testsElsewhere,
             ...(scan ? { conventions: scan } : {}),
+            ...(specScan ? { spec: specScan } : {}),
             ...(opts.cap !== undefined ? { cap: opts.cap } : {}),
           })
     const result: BranchResultLite = {
@@ -347,8 +407,33 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
       ...(preflight ? { preflight } : {}),
     },
     ...(scan ? { conventions: agregerConventions(scan, results) } : {}),
+    spec: agregerSpec(specScan, results),
     durationMs: now() - t0,
     empty: false,
+  }
+}
+
+/** Réunit le scan de spec et ce que les branches en ont cité. */
+function agregerSpec(scan: SpecScan | undefined, results: BranchResultLite[]): ReportSpec {
+  const cited = new Set<string>()
+  const rejected = new Set<string>()
+  for (const r of results) {
+    for (const id of r.finding.spec?.citees ?? []) cited.add(id)
+    for (const id of r.finding.spec?.rejetees ?? []) rejected.add(id)
+  }
+  const index = new Map((scan?.exigences ?? []).map(e => [e.id, e.text]))
+  const ids = [...cited].sort()
+  return {
+    file: scan?.file ?? null,
+    exigencesProvided: scan?.exigences.length ?? 0,
+    exigencesDropped: scan?.dropped ?? 0,
+    cited: ids,
+    rejected: [...rejected].sort(),
+    // Le texte voyage avec l'identifiant : le critère d'achèvement du lot exige que
+    // l'exigence soit CITÉE ENTRE GUILLEMETS, pas seulement référencée. Un rapport qui
+    // afficherait « spec:12 non satisfaite » obligerait le lecteur à aller ouvrir le
+    // fichier pour savoir de quoi on parle.
+    citedTexts: ids.map(id => ({ id, text: index.get(id) ?? '' })).filter(e => e.text !== ''),
   }
 }
 

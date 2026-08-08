@@ -37,6 +37,7 @@ function rapport(over: Partial<AuditReport> = {}): AuditReport {
     filesScanned: 3,
     coverage: { filesDiscovered: 3, filesRead: 3, filesDropped: [], filesTruncated: [], complete: true },
     jugement: { complet: true, nonJugees: [] },
+    spec: { file: null, exigencesProvided: 0, exigencesDropped: 0, cited: [], rejected: [], citedTexts: [] },
     durationMs: 1234,
     empty: false,
     ...over,
