@@ -1,0 +1,301 @@
+{
+  "projectName": "MangoQA",
+  "projectDir": "D:\\IA\\MangoQA",
+  "verdict": {
+    "verdict": "green",
+    "rejection": null,
+    "branches": {
+      "spec": {
+        "status": "skip",
+        "summary": "Aucune spec fournie — rien à comparer."
+      },
+      "architecture": {
+        "status": "pass",
+        "summary": "Les responsabilités sont correctement séparées (lecture bornée extraite, corpus long isolé, rendu et parsing distincts et testés) ; aucun défaut structurel concret visible dans les fichiers livrés. [lecture partielle : 4/4 fichiers audités]"
+      },
+      "security": {
+        "status": "pass",
+        "summary": "Aucune vulnérabilité concrète visible : pas de secret en dur, pas d'injection ni de XSS, les écritures et lectures de fichiers restent bornées au dossier audité. [lecture partielle : 4/4 fichiers audités]"
+      },
+      "accessibility": {
+        "status": "skip",
+        "summary": "Aucun fichier pertinent pour cette branche."
+      },
+      "performance": {
+        "status": "pass",
+        "summary": "Aucun anti-pattern de performance concret : le code produit est du CLI/Node borné (caps MAX_FILES, DISCOVERY_CAP, MAX_FILE_CHARS), et les extraits React de eval/corpus-long.ts sont des littéraux de fixture correctement écrits (clés stables `key={session.id}`, `useMemo` sur la validation, `useEffect` avec tableau de dépendances et nettoyage) ; aucun import de librairie entière ni dépendance lourde côté client. [lecture partielle : 4/4 fichiers audités]"
+      },
+      "tests": {
+        "status": "pass",
+        "summary": "La logique livrée est couverte : `parseArgs`, `codeSortie` et `rendreRapport` de src/cli.ts sont testés en Vitest dans tests/unit/test-cli.ts (codes de sortie, options facultatives, rendu vide/partiel), et le « signal projet » est un faux négatif de nommage — le dépôt nomme ses tests `tests/unit/test-*.ts`, forme que la regex `TEST_FILE_RE` de src/project-files.ts ne reconnaît pas. [lecture partielle : 4/4 fichiers audités]"
+      },
+      "design-system": {
+        "status": "skip",
+        "summary": "Aucun fichier pertinent pour cette branche."
+      }
+    },
+    "coverage": {
+      "complete": false,
+      "partial": [
+        {
+          "branch": "architecture",
+          "filesRendered": 4,
+          "filesTotal": 4
+        },
+        {
+          "branch": "security",
+          "filesRendered": 4,
+          "filesTotal": 4
+        },
+        {
+          "branch": "performance",
+          "filesRendered": 4,
+          "filesTotal": 4
+        },
+        {
+          "branch": "tests",
+          "filesRendered": 4,
+          "filesTotal": 4
+        }
+      ]
+    }
+  },
+  "branches": [
+    {
+      "id": "spec",
+      "label": "Spec",
+      "emoji": "📋",
+      "blocking": true,
+      "finding": {
+        "status": "skip",
+        "summary": "Aucune spec fournie — rien à comparer.",
+        "abstention": {
+          "cause": "hors-perimetre"
+        }
+      },
+      "filesAudited": 5,
+      "durationMs": 9
+    },
+    {
+      "id": "architecture",
+      "label": "Architecture",
+      "emoji": "🏗️",
+      "blocking": true,
+      "finding": {
+        "status": "pass",
+        "summary": "Les responsabilités sont correctement séparées (lecture bornée extraite, corpus long isolé, rendu et parsing distincts et testés) ; aucun défaut structurel concret visible dans les fichiers livrés.",
+        "coverage": {
+          "filesTotal": 4,
+          "filesRendered": 4,
+          "omitted": [],
+          "truncated": [],
+          "sourceTruncated": [
+            "eval/corpus-long.ts",
+            "src/cli.ts"
+          ],
+          "charsTotal": 104266,
+          "charsRendered": 51232,
+          "complete": false
+        }
+      },
+      "filesAudited": 4,
+      "coverage": {
+        "filesTotal": 4,
+        "filesRendered": 4,
+        "omitted": [],
+        "truncated": [],
+        "sourceTruncated": [
+          "eval/corpus-long.ts",
+          "src/cli.ts"
+        ],
+        "charsTotal": 104266,
+        "charsRendered": 51232,
+        "complete": false
+      },
+      "durationMs": 41662
+    },
+    {
+      "id": "security",
+      "label": "Sécurité",
+      "emoji": "🔒",
+      "blocking": true,
+      "finding": {
+        "status": "pass",
+        "summary": "Aucune vulnérabilité concrète visible : pas de secret en dur, pas d'injection ni de XSS, les écritures et lectures de fichiers restent bornées au dossier audité.",
+        "coverage": {
+          "filesTotal": 4,
+          "filesRendered": 4,
+          "omitted": [],
+          "truncated": [],
+          "sourceTruncated": [
+            "src/cli.ts"
+          ],
+          "charsTotal": 61320,
+          "charsRendered": 46897,
+          "complete": false
+        }
+      },
+      "filesAudited": 4,
+      "coverage": {
+        "filesTotal": 4,
+        "filesRendered": 4,
+        "omitted": [],
+        "truncated": [],
+        "sourceTruncated": [
+          "src/cli.ts"
+        ],
+        "charsTotal": 61320,
+        "charsRendered": 46897,
+        "complete": false
+      },
+      "durationMs": 13532
+    },
+    {
+      "id": "accessibility",
+      "label": "Accessibilité",
+      "emoji": "♿",
+      "blocking": true,
+      "finding": {
+        "status": "skip",
+        "summary": "Aucun fichier pertinent pour cette branche.",
+        "abstention": {
+          "cause": "hors-perimetre"
+        }
+      },
+      "filesAudited": 0,
+      "durationMs": 0
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "emoji": "⚡",
+      "blocking": true,
+      "finding": {
+        "status": "pass",
+        "summary": "Aucun anti-pattern de performance concret : le code produit est du CLI/Node borné (caps MAX_FILES, DISCOVERY_CAP, MAX_FILE_CHARS), et les extraits React de eval/corpus-long.ts sont des littéraux de fixture correctement écrits (clés stables `key={session.id}`, `useMemo` sur la validation, `useEffect` avec tableau de dépendances et nettoyage) ; aucun import de librairie entière ni dépendance lourde côté client.",
+        "coverage": {
+          "filesTotal": 4,
+          "filesRendered": 4,
+          "omitted": [],
+          "truncated": [],
+          "sourceTruncated": [
+            "eval/corpus-long.ts",
+            "src/cli.ts"
+          ],
+          "charsTotal": 104266,
+          "charsRendered": 51232,
+          "complete": false
+        }
+      },
+      "filesAudited": 4,
+      "coverage": {
+        "filesTotal": 4,
+        "filesRendered": 4,
+        "omitted": [],
+        "truncated": [],
+        "sourceTruncated": [
+          "eval/corpus-long.ts",
+          "src/cli.ts"
+        ],
+        "charsTotal": 104266,
+        "charsRendered": 51232,
+        "complete": false
+      },
+      "durationMs": 17966
+    },
+    {
+      "id": "tests",
+      "label": "Tests",
+      "emoji": "🧪",
+      "blocking": true,
+      "finding": {
+        "status": "pass",
+        "summary": "La logique livrée est couverte : `parseArgs`, `codeSortie` et `rendreRapport` de src/cli.ts sont testés en Vitest dans tests/unit/test-cli.ts (codes de sortie, options facultatives, rendu vide/partiel), et le « signal projet » est un faux négatif de nommage — le dépôt nomme ses tests `tests/unit/test-*.ts`, forme que la regex `TEST_FILE_RE` de src/project-files.ts ne reconnaît pas.",
+        "coverage": {
+          "filesTotal": 4,
+          "filesRendered": 4,
+          "omitted": [],
+          "truncated": [],
+          "sourceTruncated": [
+            "eval/corpus-long.ts",
+            "src/cli.ts"
+          ],
+          "charsTotal": 104266,
+          "charsRendered": 51232,
+          "complete": false
+        }
+      },
+      "filesAudited": 4,
+      "coverage": {
+        "filesTotal": 4,
+        "filesRendered": 4,
+        "omitted": [],
+        "truncated": [],
+        "sourceTruncated": [
+          "eval/corpus-long.ts",
+          "src/cli.ts"
+        ],
+        "charsTotal": 104266,
+        "charsRendered": 51232,
+        "complete": false
+      },
+      "durationMs": 19545
+    },
+    {
+      "id": "design-system",
+      "label": "Design System",
+      "emoji": "🎨",
+      "blocking": false,
+      "finding": {
+        "status": "skip",
+        "summary": "Aucun fichier pertinent pour cette branche.",
+        "abstention": {
+          "cause": "hors-perimetre"
+        }
+      },
+      "filesAudited": 0,
+      "durationMs": 0
+    }
+  ],
+  "filesScanned": 5,
+  "coverage": {
+    "filesDiscovered": 5,
+    "filesRead": 5,
+    "filesDropped": [],
+    "filesTruncated": [
+      "eval/corpus-long.ts",
+      "src/cli.ts"
+    ],
+    "complete": false
+  },
+  "jugement": {
+    "complet": true,
+    "nonJugees": [],
+    "preflight": {
+      "ok": true,
+      "cerveau": "claude",
+      "probleme": "",
+      "dureeMs": 4222
+    }
+  },
+  "conventions": {
+    "files": [
+      "CONTRIBUTING.md"
+    ],
+    "rulesProvided": 23,
+    "rulesDropped": 0,
+    "cited": [],
+    "rejected": [],
+    "absent": false
+  },
+  "spec": {
+    "file": null,
+    "exigencesProvided": 0,
+    "exigencesDropped": 0,
+    "cited": [],
+    "rejected": [],
+    "citedTexts": []
+  },
+  "durationMs": 45903,
+  "empty": false
+}

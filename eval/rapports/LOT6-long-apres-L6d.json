@@ -1,0 +1,362 @@
+{
+  "stats": [
+    {
+      "branch": "architecture",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "jugementsPropres": 2,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "pannes": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 12012
+    },
+    {
+      "branch": "security",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 2,
+      "horsPerimetre": 2,
+      "abstentions": 0,
+      "pannes": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 9324
+    },
+    {
+      "branch": "accessibility",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 4,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "pannes": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 13822
+    },
+    {
+      "branch": "performance",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 2,
+      "fauxPositifs": 0,
+      "jugementsPropres": 4,
+      "horsPerimetre": 0,
+      "abstentions": 2,
+      "pannes": 0,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 9995
+    },
+    {
+      "branch": "tests",
+      "casDefaut": 1,
+      "detectes": 1,
+      "rates": 0,
+      "nonPertinents": 0,
+      "casPropres": 1,
+      "fauxPositifs": 0,
+      "jugementsPropres": 2,
+      "horsPerimetre": 0,
+      "abstentions": 0,
+      "pannes": 1,
+      "mentions": {
+        "attendues": 0,
+        "obtenues": 0
+      },
+      "instables": 0,
+      "dureeMoyenneMs": 10783
+    }
+  ],
+  "observations": [
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern de performance bloquant : clés stables, dépendances de hooks complètes, filtre/tri mémoïsés, pagination et images dimensionnées.",
+      "durationMs": 11959
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Tous les champs sont étiquetés, les images ont un alt pertinent, les contrôles sont des boutons natifs et la hiérarchie de titres (h1→h2→h3) est cohérente.",
+      "durationMs": 11915
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 1
+    },
+    {
+      "caseId": "LONG-02-catalogue-cle-manquante",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La grille de résultats rend `<CreatureCard>` dans un `.map` sans prop `key`, ce qui casse la réconciliation React de la liste principale.",
+      "durationMs": 9739
+    },
+    {
+      "caseId": "LONG-03-admin-xss-enfoui",
+      "branch": "security",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La note client est injectée via innerHTML sans assainissement, offrant un XSS stocké exécuté dans la session de l'opérateur administrateur.",
+      "durationMs": 29763
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "security",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Requêtes SQL entièrement paramétrées, note client échappée côté service, aucun secret ni vulnérabilité exploitable visible.",
+      "durationMs": 9211
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Service de ~160 lignes bien découpé : constantes métier, mapping SQL→domaine centralisé dans enCommande, transaction isolée, aucune duplication ni code mort repérable.",
+      "durationMs": 13464
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "performance",
+      "pass": 1,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Code serveur Node/SQL sans rendu React ni bundle client : aucun élément relevant de ma spécialité performance front.",
+      "durationMs": 4863
+    },
+    {
+      "caseId": "LONG-05-facturation-non-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "fail",
+      "got": "skip",
+      "outcome": "panne",
+      "summary": "Audit impossible : le cerveau n'a pas répondu (Claude Code returned an error result: Reached maximum number of turns (1)).",
+      "durationMs": 19021
+    },
+    {
+      "caseId": "LONG-06-facturation-testee",
+      "branch": "tests",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique de facturation livrée est couverte par un fichier de tests Vitest ciblant paliers, prorata, TVA, port offert, erreurs et répartition de l'avoir.",
+      "durationMs": 5599
+    },
+    {
+      "caseId": "LONG-07-couplage-ui-db-enfoui",
+      "branch": "architecture",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation instancie lui-même le client Supabase et écrit sa requête SQL, couplant l'écran au schéma de la base.",
+      "durationMs": 13093
+    },
+    {
+      "caseId": "LONG-08-parametres-propre",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète : tous les champs sont étiquetés, l'image a un alt pertinent, la hiérarchie de titres est cohérente et les boutons ont un nom accessible.",
+      "durationMs": 16160
+    },
+    {
+      "caseId": "LONG-09-parametres-div-cliquable",
+      "branch": "accessibility",
+      "pass": 1,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le bouton « Révoquer » est un <div onClick> sans rôle ni gestion clavier, donc inaccessible au clavier et aux lecteurs d'écran.",
+      "durationMs": 10358
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucun anti-pattern de performance bloquant : clés stables, mémoïsation correcte, pagination et images dimensionnées, aucun import de librairie lourde.",
+      "durationMs": 12433
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Tous les champs ont un label associé, les images un alt pertinent, la hiérarchie h1→h2→h3 est cohérente et les contrôles sont des éléments natifs nommés.",
+      "durationMs": 9655
+    },
+    {
+      "caseId": "LONG-01-catalogue-propre",
+      "branch": "security",
+      "pass": 2,
+      "expected": "pass",
+      "got": "non-pertinent",
+      "outcome": "hors-perimetre",
+      "summary": "Aucun fichier retenu par relevant().",
+      "durationMs": 0
+    },
+    {
+      "caseId": "LONG-02-catalogue-cle-manquante",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La grille de résultats rend une liste de CreatureCard sans prop `key`, forçant React à re-monter les cartes à chaque changement de page, de tri ou de filtre.",
+      "durationMs": 11972
+    },
+    {
+      "caseId": "LONG-03-admin-xss-enfoui",
+      "branch": "security",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "La note libre du client est injectée via innerHTML dans le panneau admin, permettant un XSS stocké exécuté dans la session de l'opérateur.",
+      "durationMs": 10376
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "security",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Requêtes entièrement paramétrées, note client échappée côté service, aucun secret ni surface d'injection exploitable détectée.",
+      "durationMs": 6595
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Service cohésif de ~160 lignes, requêtes paramétrées, transitions et transaction isolées côté serveur : aucun défaut structurel bloquant.",
+      "durationMs": 9366
+    },
+    {
+      "caseId": "LONG-04-service-commandes-propre",
+      "branch": "performance",
+      "pass": 2,
+      "expected": "pass",
+      "got": "skip",
+      "outcome": "abstention",
+      "summary": "Aucun code client/React ni import de librairie tierce à auditer : les fichiers livrés sont un service Node.js d'accès base et un utilitaire d'échappement HTML, hors périmètre performance front/bundle.",
+      "durationMs": 9001
+    },
+    {
+      "caseId": "LONG-05-facturation-non-testee",
+      "branch": "tests",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le module de facturation est de la logique pure à fort risque financier (paliers, prorata, arrondis, répartition d'avoir) livrée sans aucun test.",
+      "durationMs": 13366
+    },
+    {
+      "caseId": "LONG-06-facturation-testee",
+      "branch": "tests",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "La logique de facturation livrée est couverte par un fichier de tests Vitest ciblant les paliers, le prorata, la TVA, les erreurs et la répartition d'avoir.",
+      "durationMs": 5146
+    },
+    {
+      "caseId": "LONG-07-couplage-ui-db-enfoui",
+      "branch": "architecture",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le composant de présentation instancie lui-même le client Supabase et écrit la requête SQL, sans aucune couche service.",
+      "durationMs": 12126
+    },
+    {
+      "caseId": "LONG-08-parametres-propre",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "pass",
+      "got": "pass",
+      "outcome": "correct-pass",
+      "summary": "Aucune barrière d'accès concrète : tous les champs sont étiquetés, l'image a un alt pertinent, les contrôles sont natifs et la hiérarchie des titres est cohérente.",
+      "durationMs": 24864
+    },
+    {
+      "caseId": "LONG-09-parametres-div-cliquable",
+      "branch": "accessibility",
+      "pass": 2,
+      "expected": "fail",
+      "got": "fail",
+      "outcome": "detecte",
+      "summary": "Le contrôle « Révoquer » est un <div onClick> sans rôle ni accès clavier, inutilisable au clavier et invisible pour les lecteurs d'écran.",
+      "durationMs": 9982
+    }
+  ],
+  "totalMs": 290031
+}

@@ -673,8 +673,29 @@ const CATALOGUE_PIED = `
 }
 `
 
-/** La grille — SEULE différence entre le cas propre et le cas fautif. */
+/** La grille — SEULE différence entre le cas propre et le cas fautif.
+ *
+ *  (2026-08-08, lot 6 — faille L6-d) Le `<h2>` a été AJOUTÉ ici. Sans lui, les cartes en
+ *  `<h3>` suivaient directement le `<h1>` du catalogue, sans niveau intermédiaire pour la
+ *  grille de résultats — le seul `<h2>` du fichier étant dans l'`aside` des favoris.
+ *
+ *  C'est la branche accessibilité qui l'a relevé, sur `LONG-01`, aux deux passes de la
+ *  mesure du 2026-08-08. Le harnais l'a compté en FAUX POSITIF parce que le cas déclare
+ *  `accessibility: 'pass'` — mais **le fait était exact**, vérifié à la main. Ce n'était
+ *  pas une hallucination : c'était un vrai défaut d'accessibilité dans un fichier que le
+ *  corpus présentait comme propre.
+ *
+ *  Deux issues étaient possibles : retirer l'assertion (le cas a été écrit comme contrôle
+ *  des CLÉS DE LISTE, pas de l'accessibilité), ou réparer la fixture. **La seconde est la
+ *  bonne** — un contrôle « propre » qui contient un vrai défaut n'est pas un contrôle, et
+ *  toute branche notée dessus produira des faux positifs légitimes. Retirer l'assertion
+ *  aurait fait disparaître le symptôme en gardant la cause.
+ *
+ *  ⚠️ Le chiffre publié le 2026-08-08 (accessibility 2/8) reste celui mesuré contre le
+ *  corpus AVANT cette réparation. On ne réécrit pas une mesure passée ; on date la
+ *  correction et on re-mesure. */
 const grille = (avecCle: boolean): string => `
+      <h2 id="titre-resultats">Résultats</h2>
       <div className="catalogue__grille">
         {pageCourante.map((c) => (
           <CreatureCard

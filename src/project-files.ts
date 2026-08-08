@@ -27,9 +27,22 @@ export const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.mangoqa', '.
 // ce qui rend tout tri a posteriori inutile (rien à trier au-delà du 40ᵉ).
 export const DISCOVERY_CAP = 500
 // Fichiers de test — utilisé pour éviter un Feu Rouge fantôme sur la branche
-// Tests quand les fichiers *.test.*/*.spec.* existent dans le projet mais sont
-// hors du delta `changedFiles` de cette phase (cf. #10, constat "Tests").
-const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx)$/
+// Tests quand des fichiers de test existent dans le projet mais sont hors du delta
+// `changedFiles` de cette phase (cf. #10, constat "Tests").
+//
+// (2026-08-08, persona P7 — faille P-02) Ce motif ne connaissait que `foo.test.ts` et
+// `foo.spec.ts`. Or Mango QA nomme ses propres tests `test-cli.ts` : **son propre dépôt
+// était vu comme dépourvu de tests**, et les branches recevaient le signal « aucun
+// fichier de test n'existe nulle part dans ce projet » — un mensonge, sur la foi duquel
+// la branche Tests peut rendre un Feu Rouge. Trouvé par le produit en s'auditant
+// lui-même, qui a nommé la cause exacte (« la regex TEST_FILE_RE ne reconnaît pas cette
+// forme »).
+//
+// Les deux conventions dominantes sont désormais couvertes — suffixe (`foo.test.ts`,
+// `foo_test.ts`, `foo-spec.js`) et préfixe (`test-foo.ts`, `test_foo.ts`). Le séparateur
+// est OBLIGATOIRE : sans lui, `latest.ts` et `contest.ts` seraient pris pour des tests,
+// et un faux positif ici éteindrait un vrai Feu Rouge.
+const TEST_FILE_RE = /^(test[-_].+\.(ts|tsx|js|jsx)|.+[.\-_](test|spec)\.(ts|tsx|js|jsx))$/i
 
 // ── Système de fichiers injectable (surface minimale, testable sans disque) ──
 export interface DirentLike {
@@ -71,7 +84,17 @@ export const realFs: FsLike = {
 }
 
 // ── Lecture bornée des fichiers livrés ───────────────────────────────────────
-const SRC_EXT = /\.(ts|tsx|js|jsx|css|html|json)$/
+
+/** Les extensions que les branches savent auditer. **Source unique** : la regex en
+ *  dérive, et les messages destinés à l'utilisateur la citent telle quelle.
+ *
+ *  (2026-08-08, persona P5) Cette liste était implicite. Un développeur Django a pointé
+ *  Mango QA sur son projet, obtenu « aucun fichier auditable » et un code de sortie **0**
+ *  — sans jamais savoir que `.py` n'est pas dans le périmètre. Une limite qu'on ne nomme
+ *  pas se lit comme une absence de problème. */
+export const EXTENSIONS_AUDITEES = ['.ts', '.tsx', '.js', '.jsx', '.css', '.html', '.json'] as const
+
+const SRC_EXT = new RegExp(`(${EXTENSIONS_AUDITEES.map(e => `\\${e}`).join('|')})$`)
 
 /** Ce chemin désigne-t-il un fichier que les branches savent auditer ?
  *

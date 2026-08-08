@@ -129,14 +129,43 @@ export function contenuHookPrePush(): string {
     '  exit 0',
     'fi',
     '',
-    'echo "[mango-qa] audit de ce qui va être poussé…"',
-    'npx --no-install mangoqa . --diff origin/HEAD || npx -y mango-qa . --diff origin/HEAD',
+    '# 1. TROUVER l\'auditeur AVANT de l\'appeler.',
+    '#',
+    '#    (2026-08-08, persona P2) L\'ancienne version enchaînait deux `npx` et prenait le',
+    '#    code de sortie de ce qui restait. Quand aucun des deux ne pouvait s\'installer,',
+    '#    npm rendait 1 — et le hook annonçait « poussée refusée (code 1) », c\'est-à-dire',
+    '#    FEU ROUGE, sur un code que personne n\'avait lu. Une panne d\'infrastructure',
+    '#    présentée comme un verdict est très exactement ce que ce produit combat.',
+    'if command -v mangoqa >/dev/null 2>&1; then',
+    '  MQ="mangoqa"',
+    'elif npx --no-install mangoqa --version >/dev/null 2>&1; then',
+    '  MQ="npx --no-install mangoqa"',
+    'else',
+    '  echo "[mango-qa] auditeur introuvable — ce hook n\'a rien vérifié."',
+    '  echo "           Installez-le (npm i -g mango-qa) ou supprimez .git/hooks/pre-push."',
+    '  # FAIL-OPEN, invariant du produit : une panne de l\'auditeur ne bloque jamais le',
+    '  # travail de l\'utilisateur. On alerte fort, on laisse passer.',
+    '  exit 0',
+    'fi',
+    '',
+    '# 2. CHOISIR la référence de comparaison.',
+    '#    `origin/HEAD` n\'est pas défini sur beaucoup de dépôts (clone partiel, dépôt',
+    '#    local sans remote) : s\'en servir aveuglément faisait échouer l\'audit lui-même.',
+    'if git rev-parse --abbrev-ref "@{upstream}" >/dev/null 2>&1; then',
+    '  REF=$(git rev-parse --abbrev-ref "@{upstream}")',
+    '  echo "[mango-qa] audit de ce qui a divergé depuis $REF…"',
+    '  $MQ . --diff "$REF"',
+    'else',
+    '  echo "[mango-qa] pas de branche amont — audit du travail non commité…"',
+    '  $MQ . --diff',
+    'fi',
     'code=$?',
     '',
     'if [ $code -ne 0 ]; then',
     '  echo ""',
     '  echo "[mango-qa] poussée refusée (code $code)."',
-    '  echo "           1 = feu rouge · 3 = lecture partielle · 4 = l\'auditeur n\'a pas pu juger"',
+    '  echo "           1 = feu rouge · 2 = environnement inutilisable"',
+    '  echo "           3 = lecture partielle · 4 = l\'auditeur n\'a pas pu juger"',
     '  echo "           Forcer malgré tout : MANGOQA_SKIP=1 git push"',
     'fi',
     'exit $code',
@@ -163,7 +192,7 @@ export function planifierHook(existant: string | null): { contenu: string; etat:
     detail:
       'un hook pre-push existe déjà et ne vient pas de Mango QA. Je ne le remplace pas.\n' +
       '           Pour les faire cohabiter, ajoutez cette ligne à la fin du vôtre :\n' +
-      '             npx mangoqa . --diff origin/HEAD || exit $?',
+      '             command -v mangoqa >/dev/null && { mangoqa . --diff || exit $?; }',
   }
 }
 
@@ -184,7 +213,14 @@ export const CHEMIN_WORKFLOW = '.github/workflows/mangoqa.yml'
 export function contenuWorkflowCi(): string {
   return `# Mango QA — l'auditeur indépendant, en barrière de CI.
 #
-# Ce fichier est prêt à coller. Un seul prérequis : le secret ANTHROPIC_API_KEY.
+# ⚠️ AVANT DE COMMITTER CE FICHIER : Mango QA n'est PAS encore publié sur npm.
+#    En l'état, l'étape ci-dessous échouera en 404. C'est délibéré — le paquet reste
+#    privé tant que l'auditeur n'a pas été mesuré sur un dépôt tiers.
+#    En attendant, remplacez \`npx -y mango-qa\` par le chemin de votre copie locale.
+#    (Trouvé par le persona P3, 2026-08-08 : un workflow « prêt à coller » qui échoue
+#    au premier push n'est pas prêt à coller.)
+#
+# Prérequis une fois publié : le secret ANTHROPIC_API_KEY.
 #
 # Codes de sortie interprétés par la CI :
 #   0 feu vert · 1 feu rouge · 2 environnement inutilisable

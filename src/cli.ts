@@ -29,8 +29,14 @@ import { LIBELLE_CAUSE, estNonVerifie } from './verdict.js'
 import { CerveauInutilisableError } from './preflight.js'
 import { SpecInutilisableError } from './spec.js'
 import { fichiersModifies } from './git.js'
+import { EXTENSIONS_AUDITEES } from './project-files.js'
+import { VERSION } from './version.js'
 
-const VERSION = '2.1.0'
+// (2026-08-08) La version était écrite en dur ici ET dans `mcp.ts` — troisième
+// duplication de règle du dépôt. Deux copies d'un numéro de version, c'est la garantie
+// qu'une CLI annoncera autre chose que le serveur MCP un jour. Ré-exportée pour les
+// appelants qui l'importaient d'ici.
+export { VERSION }
 
 /** Codes de sortie — le contrat de la CLI en CI. Stables, documentés, testés. */
 export const EXIT = {
@@ -77,8 +83,10 @@ OPTIONS
                           URL, lue via le CLI \`gh\` déjà authentifié chez vous). Active la
                           branche Spec : le code fait-il ce qu'on attendait ? Sans elle,
                           l'audit le déclare et ne juge pas dessus.
-  --cerveau <nom>         Cerveau d'audit : ${CERVEAUX.join(' | ')}. Défaut : ollama.
-                          RECOMMANDÉ : claude (qualité de jugement nettement supérieure).
+  --cerveau <nom>         Cerveau d'audit : ${CERVEAUX.join(' | ')}. Défaut : claude
+                          (qualité de jugement nettement supérieure, mesurée).
+                          \`--cerveau ollama\` ou QA_LOCAL_ONLY=on : rien ne quitte
+                          votre machine, au prix d'un jugement moins sûr.
   --modele <id>           Modèle du cerveau claude. Défaut : claude-opus-5.
   --only <a,b>            N'exécuter que ces branches (${ALL_BRANCHES.map(b => b.id).join(', ')})
   --concurrency <n>       Branches en parallèle (défaut 1 : verdicts au fil de l'eau).
@@ -281,7 +289,12 @@ const pct = (n: number, d: number): string => (d > 0 ? `${Math.round((n / d) * 1
 /** Une ligne de branche, format commun à l'affichage progressif et au rapport final. */
 function ligneBranche(b: BranchResultLite): string {
   const c = b.coverage
-  const vu = c ? `${c.filesRendered}/${c.filesTotal} vus` : `${b.filesAudited} fichiers`
+  // (2026-08-08, persona P1) Une branche qui s'est abstenue sans appeler le modèle
+  // affichait quand même « 2 fichiers » — ce qui se lit comme « j'ai regardé 2 fichiers ».
+  // Elle n'en a regardé aucun. Sur un produit dont la thèse est de ne pas laisser croire
+  // qu'on a examiné ce qu'on n'a pas examiné, c'était une verrue.
+  const rienRegarde = b.finding.status === 'skip' && c === undefined
+  const vu = c ? `${c.filesRendered}/${c.filesTotal} vus` : rienRegarde ? '—' : `${b.filesAudited} fichiers`
   const partiel = c && !c.complete ? ' ⚠️' : ''
   return (
     `  ${FEUX[b.finding.status] ?? '?'} ${b.emoji} ${b.label.padEnd(15)}` +
@@ -293,8 +306,22 @@ function ligneBranche(b: BranchResultLite): string {
 export function rendreRapport(r: AuditReport): string {
   const l: string[] = ['']
 
+  // (2026-08-08, persona P5 — faille P-01) Un audit VIDE n'est pas un audit réussi.
+  // Un développeur Django a pointé Mango QA sur son projet : « aucun fichier auditable »,
+  // code de sortie **0**, alors que le fichier contenait une injection SQL flagrante. En
+  // CI, ça passe pour toujours. C'est la famille J4-a d'un cran plus haut — le produit
+  // savait dire « je n'ai pas lu » et « je n'ai pas jugé », mais pas « je n'ai rien eu à
+  // regarder ». On dit maintenant les trois, et surtout POURQUOI.
   if (r.empty) {
-    l.push(`  Aucun fichier auditable dans ${r.projectDir}.`)
+    l.push('  AUCUN FICHIER AUDITABLE — rien n\'a été vérifié dans ce dossier.')
+    l.push(`    ${r.projectDir}`)
+    l.push('')
+    l.push(`    Mango QA lit aujourd'hui : ${EXTENSIONS_AUDITEES.join(' ')}`)
+    l.push('    Les autres langages (Python, Go, Rust, PHP…) ne sont PAS encore audités —')
+    l.push("    ce n'est pas un feu vert sur votre code, c'est une absence de lecture.")
+    l.push('')
+    l.push('    Si vous attendiez un audit ici : vérifiez le chemin, ou consultez')
+    l.push("    l'état du support multi-langage avant de brancher Mango QA en CI.")
     l.push('')
     return l.join('\n')
   }
@@ -305,7 +332,8 @@ export function rendreRapport(r: AuditReport): string {
   const cov = r.coverage
   const partielles = r.branches.filter(b => b.coverage && !b.coverage.complete)
   if (cov.complete) {
-    l.push(`  COUVERTURE : complète — ${cov.filesRead} fichiers lus et vus en entier.`)
+    const s = cov.filesRead > 1 ? 's' : ''
+    l.push(`  COUVERTURE : complète — ${cov.filesRead} fichier${s} lu${s} et vu${s} en entier.`)
   } else {
     l.push('  COUVERTURE — INCOMPLÈTE')
     l.push(`    Fichiers découverts : ${cov.filesDiscovered}   lus : ${cov.filesRead} (${pct(cov.filesRead, cov.filesDiscovered)})`)
@@ -402,6 +430,13 @@ export function rendreRapport(r: AuditReport): string {
     if (v.rejection.rule_ref) l.push(`  Règle : ${v.rejection.rule_ref}`)
   }
   l.push(`  Durée : ${(r.durationMs / 1000).toFixed(1)}s`)
+  // Les conditions ferment le rapport comme elles ouvrent un rapport de mesure : un
+  // verdict qu'on archive sans savoir QUAND ni PAR QUOI il a été rendu n'est pas une
+  // preuve (persona P4).
+  l.push(
+    `  Rendu le ${r.conditions.date.slice(0, 16).replace('T', ' ')} par ${r.conditions.cerveau}` +
+      ` · ${r.conditions.modele} · mangoqa ${r.conditions.version}`,
+  )
   l.push('')
   return l.join('\n')
 }
@@ -415,6 +450,10 @@ export function rendreRapport(r: AuditReport): string {
  *     a demandé qu'on le lui refuse. */
 export function codeSortie(r: AuditReport, exigerCouverture: boolean): number {
   if (r.verdict.verdict === 'red') return EXIT.ROUGE
+  // Un dossier dont RIEN n'était auditable n'a pas été vérifié — il ne peut pas rendre
+  // le même code qu'un feu vert. (persona P5 : un projet Python sortait en 0, donc
+  // passait en CI, alors qu'aucun fichier n'avait jamais été lu.)
+  if (r.empty) return EXIT.NON_VERIFIE
   if (estNonVerifie(r.verdict.verdict, r.jugement.complet)) return EXIT.NON_VERIFIE
   if (exigerCouverture && !r.coverage.complete) return EXIT.PARTIEL
   return EXIT.VERT
@@ -511,6 +550,22 @@ export async function main(argv: string[]): Promise<number> {
   // restent des réglages de process, parce qu'ils en sont vraiment : ils décrivent la
   // machine qui juge, pas la demande d'audit.
   if (opts.cerveau !== undefined) process.env.QA_BRAIN = opts.cerveau
+
+  // (2026-08-08, persona P2 — faille P-04) La bibliothèque garde `ollama` par défaut
+  // pour ne pas changer sous les pieds de l'intégration MangoOS. Mais la décision **D1**
+  // de l'ADR fait de Claude le défaut PRODUIT, et `llm.ts` l'écrit noir sur blanc :
+  // « la CLI et la documentation, elles, recommandent claude ». Elle ne l'appliquait pas.
+  //
+  // Conséquence vécue : Salomé installe le hook dans son dépôt, où aucun `.env` ne fixe
+  // `QA_BRAIN`. L'audit part sur un modèle local — **344 s** au lieu de 20, et un feu
+  // rouge rendu par le cerveau que le produit déconseille. Un pre-push de six minutes
+  // se fait désinstaller le jour même.
+  //
+  // ⚠️ Sauf en mode souverain : `QA_LOCAL_ONLY=on` promet qu'aucun octet ne sort de la
+  // machine. Basculer silencieusement sur Claude ici trahirait cette promesse — c'est
+  // le seul endroit où ce défaut ne s'applique pas.
+  const souverain = /^(on|1|true|yes)$/i.test((process.env.QA_LOCAL_ONLY ?? '').trim())
+  if (!process.env.QA_BRAIN && !souverain) process.env.QA_BRAIN = 'claude'
   if (opts.modele !== undefined) process.env.QA_MODEL = opts.modele
 
   // `--json` sur stdout doit rester du JSON PUR : tout le reste part sur stderr, sinon
@@ -592,12 +647,23 @@ export async function main(argv: string[]): Promise<number> {
     )
   }
   if (code === EXIT.NON_VERIFIE) {
-    const branches = rapport.jugement.nonJugees.filter(b => b.blocking)
-    console.error(
-      `[mangoqa] Feu Vert refusé : ${branches.length} branche(s) bloquante(s) n'ont pas pu juger.\n` +
-        branches.map(b => `          · ${b.label} — ${LIBELLE_CAUSE[b.cause]}`).join('\n') +
-        "\n          Aucun défaut n'a été trouvé, mais rien n'a été vérifié non plus.",
-    )
+    // Deux chemins mènent ici, et les confondre donnerait un message absurde
+    // (« 0 branche bloquante n'a pas pu juger ») : soit rien n'était auditable, soit
+    // des branches n'ont pas pu juger ce qui l'était.
+    if (rapport.empty) {
+      console.error(
+        "[mangoqa] Code 4 : aucun fichier auditable — ce n'est PAS un feu vert.\n" +
+          `          Extensions lues : ${EXTENSIONS_AUDITEES.join(' ')}\n` +
+          '          Rendre 0 ici laisserait une CI passer indéfiniment sur du code jamais lu.',
+      )
+    } else {
+      const branches = rapport.jugement.nonJugees.filter(b => b.blocking)
+      console.error(
+        `[mangoqa] Feu Vert refusé : ${branches.length} branche(s) bloquante(s) n'ont pas pu juger.\n` +
+          branches.map(b => `          · ${b.label} — ${LIBELLE_CAUSE[b.cause]}`).join('\n') +
+          "\n          Aucun défaut n'a été trouvé, mais rien n'a été vérifié non plus.",
+      )
+    }
   }
   return code
 }

@@ -24,7 +24,8 @@ import { auditProject, ALL_BRANCHES, type AuditReport } from './audit.js'
 import { LIBELLE_CAUSE, estNonVerifie } from './verdict.js'
 import { CerveauInutilisableError } from './preflight.js'
 
-const VERSION = '2.1.0'
+// Source unique — voir `src/version.ts`.
+import { VERSION } from './version.js'
 
 /** Charge le SDK MCP à la demande — dépendance de pair OPTIONNELLE, comme le SDK
  *  Claude et tree-sitter. Le SDK MCP et ses dépendances (express, hono, zod, ajv…)
@@ -63,7 +64,10 @@ export function rendreTexteMcp(r: AuditReport): string {
   const l: string[] = []
   const cov = r.coverage
   if (cov.complete) {
-    l.push(`COUVERTURE : complète — les ${cov.filesRead} fichiers du projet ont été lus et vus en entier.`)
+    l.push(
+      `COUVERTURE : complète — ${cov.filesRead} fichier${cov.filesRead > 1 ? 's' : ''} du projet ` +
+        `${cov.filesRead > 1 ? 'ont' : 'a'} été lu${cov.filesRead > 1 ? 's' : ''} et vu${cov.filesRead > 1 ? 's' : ''} en entier.`,
+    )
   } else {
     l.push('⚠️ COUVERTURE INCOMPLÈTE — le verdict ci-dessous ne porte PAS sur tout le code.')
     l.push(`   Fichiers découverts : ${cov.filesDiscovered} · lus : ${cov.filesRead}`)
@@ -232,6 +236,9 @@ export function rendreStructureMcp(r: AuditReport): Record<string, unknown> {
     projet: r.projectName,
     dossier: r.projectDir,
     dureeMs: r.durationMs,
+    // Les conditions du verdict voyagent avec lui : un assistant qui relaie un audit à
+    // son utilisateur doit pouvoir dire quand et par quel cerveau il a été rendu.
+    conditions: r.conditions,
   }
 }
 
@@ -374,6 +381,12 @@ export async function creerServeur() {
         projet: z.string(),
         dossier: z.string(),
         dureeMs: z.number(),
+        conditions: z.object({
+          date: z.string(),
+          cerveau: z.string(),
+          modele: z.string(),
+          version: z.string(),
+        }),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },

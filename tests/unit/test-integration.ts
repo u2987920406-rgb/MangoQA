@@ -99,6 +99,35 @@ describe('hook pre-push', () => {
     expect(hook).toContain('MANGOQA_SKIP')
   })
 
+  it('(P2) une panne d\'installation ne peut PAS être annoncée comme un feu rouge', () => {
+    // L'ancienne version enchaînait deux `npx` et prenait le code de ce qui restait :
+    // quand aucun ne pouvait s'installer, npm rendait 1 et le hook annonçait « poussée
+    // refusée (code 1) » — FEU ROUGE — sur du code que personne n'avait lu.
+    expect(hook).toContain('command -v mangoqa')
+    expect(hook).toContain('auditeur introuvable')
+    // Fail-open, invariant du produit : l'absence d'auditeur alerte mais ne bloque pas.
+    expect(hook).toMatch(/auditeur introuvable[\s\S]*exit 0/)
+  })
+
+  it('(P2) ne suppose pas que `origin/HEAD` existe', () => {
+    // Beaucoup de dépôts n'ont pas cette référence (clone partiel, dépôt local sans
+    // remote) : s'en servir aveuglément faisait échouer l'audit lui-même.
+    expect(hook).toContain('@{upstream}')
+    expect(hook).toContain('pas de branche amont')
+    // Aucune LIGNE EXÉCUTABLE ne doit encore s'y référer (les commentaires expliquent
+    // justement pourquoi on ne s'en sert pas).
+    const executables = hook.split('\n').filter(l => !l.trim().startsWith('#'))
+    expect(executables.join('\n')).not.toContain('origin/HEAD')
+  })
+
+  it('(P2) le conseil de cohabitation ne recommande pas une forme cassée', () => {
+    // Le refus expliquait comment cohabiter… en suggérant `--diff origin/HEAD`, la forme
+    // qu'on venait justement d'abandonner parce qu'elle échoue sur beaucoup de dépôts.
+    const conseil = planifierHook('#!/bin/sh\nnpm test\n').detail
+    expect(conseil).not.toContain('origin/HEAD')
+    expect(conseil).toContain('command -v mangoqa')
+  })
+
   it('porte un marqueur qui le rend reconnaissable', () => {
     expect(estNotreHook(hook)).toBe(true)
     expect(estNotreHook('#!/bin/sh\nnpm test\n')).toBe(false)

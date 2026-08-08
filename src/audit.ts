@@ -32,6 +32,8 @@ import { buildVerdict, estPanne } from './verdict.js'
 import { CerveauInutilisableError, preflightCerveau, type ResultatPreflight } from './preflight.js'
 import { scanConventions, type ConventionsScan } from './conventions.js'
 import { scanSpec, type SpecScan } from './spec.js'
+import { cerveauPrimaire } from './llm.js'
+import { VERSION } from './version.js'
 import { architecture } from './branches/architecture.js'
 import { security } from './branches/security.js'
 import { accessibility } from './branches/accessibility.js'
@@ -216,9 +218,32 @@ export interface ReportSpec {
   citedTexts: Array<{ id: string; text: string }>
 }
 
+/** Les conditions dans lesquelles CE rapport a été produit.
+ *
+ *  (2026-08-08, persona P4 — faille P-03) Le rapport machine ne portait ni date, ni
+ *  cerveau, ni version. C'était une contradiction interne : la sortie TEXTE annonce le
+ *  cerveau depuis le lot 0, précisément parce que « deux audits rendus par deux cerveaux
+ *  différents ne sont pas comparables » — mais la sortie MACHINE, la seule qu'on archive
+ *  vraiment (CI, livraison client, chaîne d'agents), ne le disait pas.
+ *
+ *  Un rapport qu'on joint à une livraison sans savoir QUAND ni PAR QUOI il a été rendu
+ *  n'est pas une preuve, c'est une capture d'écran. */
+export interface ConditionsAudit {
+  /** ISO 8601 avec décalage local — recoupable avec un journal système. */
+  date: string
+  /** Le cerveau qui a jugé (`claude` | `ollama`). */
+  cerveau: string
+  /** Le modèle exact, quand il est connu. */
+  modele: string
+  /** Version de Mango QA qui a rendu ce verdict. */
+  version: string
+}
+
 export interface AuditReport {
   projectName: string
   projectDir: string
+  /** Quand, par quel cerveau, avec quelle version. Toujours présent. */
+  conditions: ConditionsAudit
   /** Le contrat FIGÉ, identique à celui écrit dans `.mangoqa/audit-verdict.json`. */
   verdict: QAVerdict
   /** Le détail par branche — ce que le contrat figé ne porte pas. */
@@ -252,10 +277,26 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
   if (!fsx.existsSync(dir)) throw new Error(`Dossier introuvable : ${dir}`)
 
   const projectName = path.basename(dir)
+  const cerveau = cerveauPrimaire()
+  const conditions: ConditionsAudit = {
+    date: dateLocaleIso(opts.now?.() ?? Date.now()),
+    cerveau,
+    modele:
+      cerveau === 'claude'
+        ? process.env.QA_MODEL ?? 'claude-opus-5'
+        : process.env.QA_OLLAMA_MODEL ?? '(défaut)',
+    version: VERSION,
+  }
   const registre = opts.branches ?? ALL_BRANCHES
   const branches = opts.only?.length ? registre.filter(b => opts.only!.includes(b.id)) : registre
   if (branches.length === 0) {
-    throw new Error(`Aucune branche ne correspond à : ${opts.only?.join(', ')}`)
+    // Deux causes distinctes, et les confondre produisait « ne correspond à :
+    // undefined » quand le registre lui-même était vide (persona P8).
+    throw new Error(
+      opts.only?.length
+        ? `Aucune branche ne correspond à : ${opts.only.join(', ')}. Connues : ${registre.map(b => b.id).join(', ')}.`
+        : 'Registre de branches vide — aucune branche à exécuter.',
+    )
   }
 
   const t0 = now()
@@ -297,6 +338,7 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
     return {
       projectName,
       projectDir: dir,
+      conditions,
       verdict: { verdict: 'green', rejection: null, branches: {} },
       branches: [],
       filesScanned: 0,
@@ -384,6 +426,7 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
   return {
     projectName,
     projectDir: dir,
+    conditions,
     verdict,
     branches: results,
     filesScanned: files.length,
@@ -411,6 +454,29 @@ export async function auditProject(projectDir: string, opts: AuditOptions = {}):
     durationMs: now() - t0,
     empty: false,
   }
+}
+
+/** ISO 8601 en heure LOCALE, décalage inclus : `2026-08-08T05:21:44+02:00`.
+ *
+ *  (2026-08-08, persona P6) `toISOString()` rend de l'UTC. Le premier jet de ce champ
+ *  affichait donc « rendu le 03:21 » pour un audit lancé à 05:21 — deux heures dans le
+ *  passé. **C'est le troisième passage de ce piège dans ce dépôt** : `_ceiling.ts` puis
+ *  les rapports d'éval l'avaient déjà rencontré, et le commentaire que j'avais écrit
+ *  disait « heure locale » au-dessus d'un appel qui ne l'était pas.
+ *
+ *  Un horodatage qu'on ne peut pas recouper avec un journal système perd la moitié de sa
+ *  valeur, et un rapport joint à une livraison client daté de deux heures avant l'audit
+ *  est pire qu'un rapport sans date : il a l'air précis. */
+export function dateLocaleIso(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number): string => String(Math.floor(Math.abs(n))).padStart(2, '0')
+  const dec = -d.getTimezoneOffset()
+  const signe = dec >= 0 ? '+' : '-'
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+    `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` +
+    `${signe}${p(dec / 60)}:${p(dec % 60)}`
+  )
 }
 
 /** Réunit le scan de spec et ce que les branches en ont cité. */

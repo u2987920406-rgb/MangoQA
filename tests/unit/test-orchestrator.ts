@@ -336,6 +336,29 @@ describe('orchestrator', () => {
     expect(projectHasTests('/proj2', fsxNoTests)).toBe(false)
   })
 
+  it('(P7) reconnaît les tests PRÉFIXÉS, sans confondre « latest » avec « test »', () => {
+    // Trouvé par le produit en s'auditant lui-même : Mango QA nomme ses tests
+    // `test-cli.ts`, forme que l'ancien motif (`*.test.*`/`*.spec.*`) ignorait. Son
+    // PROPRE dépôt était donc vu comme dépourvu de tests, et les branches recevaient
+    // « aucun fichier de test n'existe nulle part » — un mensonge sur la foi duquel la
+    // branche Tests peut rendre un Feu Rouge.
+    const avec = (noms: string[]): FsLike => ({
+      existsSync: () => true,
+      readFileSync: () => '',
+      writeFileSync: () => {},
+      mkdirSync: () => {},
+      readdirSync: () => noms.map(n => ({ name: n, isDirectory: () => false })),
+      isFile: () => true,
+    })
+    for (const n of ['test-cli.ts', 'test_utils.tsx', 'foo_test.ts', 'bar-spec.js', 'a.test.ts']) {
+      expect(projectHasTests('/p', avec([n])), n).toBe(true)
+    }
+    // Le séparateur est obligatoire : un faux positif ici ÉTEINDRAIT un vrai Feu Rouge.
+    for (const n of ['latest.ts', 'contest.ts', 'protest.js', 'manifest.json']) {
+      expect(projectHasTests('/p', avec([n])), n).toBe(false)
+    }
+  })
+
   it('walkSrc : parcourt, saute les dossiers cachés/skip, borne MAX_FILES', () => {
     const listing: Record<string, { name: string; dir: boolean }[]> = {
       '/p': [

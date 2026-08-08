@@ -6,7 +6,7 @@
 // qu'une CI consomme, et le seul qu'on ne peut pas changer sans casser des pipelines.
 import { describe, it, expect } from 'vitest'
 import { parseArgs, codeSortie, rendreRapport, EXIT, type CliOptions } from '../../src/cli.js'
-import type { AuditReport } from '../../src/audit.js'
+import { dateLocaleIso, type AuditReport } from '../../src/audit.js'
 import type { AuditCoverage } from '../../src/types.js'
 
 const opts = (argv: string[]): CliOptions => {
@@ -33,6 +33,7 @@ function rapport(over: Partial<AuditReport> = {}): AuditReport {
   return {
     projectName: 'projet',
     projectDir: '/p',
+    conditions: { date: '2026-08-08T05:00:00.000Z', cerveau: 'claude', modele: 'claude-opus-5', version: '2.1.0' },
     verdict: { verdict: 'green', rejection: null, branches: {} },
     branches: [],
     filesScanned: 3,
@@ -163,6 +164,68 @@ describe('CLI — codes de sortie (contrat CI)', () => {
     expect(codeSortie(r, false)).toBe(EXIT.ROUGE)
   })
 
+  it('(P5) un dossier SANS fichier auditable sort en 4, jamais en 0', () => {
+    // Trouvé par le persona P5 : un projet Django contenant une injection SQL flagrante
+    // rendait « aucun fichier auditable » et code 0 — donc passait en CI pour toujours,
+    // sans qu'un seul fichier ait été lu. Un audit vide n'est pas un audit réussi.
+    const vide = rapport({ empty: true, branches: [], filesScanned: 0 })
+    expect(codeSortie(vide, false)).toBe(EXIT.NON_VERIFIE)
+    expect(codeSortie(vide, true)).toBe(EXIT.NON_VERIFIE)
+  })
+
+  it('(P5) le rendu vide NOMME les extensions lues, et refuse le mot « vert »', () => {
+    // Une limite qu'on ne nomme pas se lit comme une absence de problème.
+    const texte = rendreRapport(rapport({ empty: true, branches: [] }))
+    expect(texte).toContain('AUCUN FICHIER AUDITABLE')
+    expect(texte).toContain('.tsx')
+    expect(texte).toContain('Python')
+    expect(texte).not.toContain('FEU VERT')
+  })
+
+  it('(P6) la date du rapport est LOCALE, pas UTC', () => {
+    // Troisième passage de ce piège dans le dépôt. Le premier jet affichait « rendu le
+    // 03:21 » pour un audit lancé à 05:21 — un rapport daté de deux heures avant l'audit
+    // est pire qu'un rapport sans date : il a l'air précis.
+    const t = new Date(2026, 7, 8, 5, 21, 44).getTime()
+    const iso = dateLocaleIso(t)
+    expect(iso.slice(0, 19)).toBe('2026-08-08T05:21:44')
+    expect(iso).toMatch(/[+-]\d{2}:\d{2}$/)
+    // Et il doit rester lisible par un lecteur de dates standard.
+    expect(new Date(iso).getTime()).toBe(t)
+  })
+
+  it('(P4) le rapport porte QUAND et PAR QUOI il a été rendu', () => {
+    // Une freelance veut joindre le rapport machine à une livraison client. Sans date ni
+    // cerveau, ce n'est pas une preuve, c'est une capture d'écran — et c'était une
+    // contradiction interne : la sortie TEXTE annonce le cerveau depuis le lot 0,
+    // précisément parce que deux cerveaux différents ne sont pas comparables.
+    const texte = rendreRapport(rapport())
+    expect(texte).toContain('claude-opus-5')
+    expect(texte).toContain('2026-08-08')
+    expect(texte).toContain('mangoqa 2.1.0')
+  })
+
+  it('(P1) une branche qui n\'a rien regardé n\'affiche pas un nombre de fichiers', () => {
+    // La branche Spec sans spec affichait « 2 fichiers », ce qui se lit comme
+    // « j'ai regardé 2 fichiers ». Elle n'en avait regardé aucun.
+    const texte = rendreRapport(
+      rapport({
+        branches: [
+          {
+            id: 'spec',
+            label: 'Spec',
+            emoji: '📋',
+            blocking: true,
+            finding: { status: 'skip', summary: 'Aucune spec fournie.', abstention: { cause: 'hors-perimetre' } },
+            filesAudited: 2,
+            durationMs: 0,
+          },
+        ],
+      }),
+    )
+    expect(texte).not.toContain('2 fichiers')
+  })
+
   it('(J4-a) le rendu ne dit PAS « FEU VERT » quand rien n\'a été jugé', () => {
     const texte = rendreRapport(rapport(nonJuge()))
     expect(texte).toContain('NON VÉRIFIÉ')
@@ -206,8 +269,11 @@ describe('CLI — rendu du rapport', () => {
   })
 
   it('dossier vide : le dit, sans inventer un verdict rassurant', () => {
+    // (2026-08-08) Formulation durcie après le persona P5 : « aucun fichier auditable »
+    // ne suffisait pas — il faut dire que ce n'est PAS un feu vert. Voir les deux tests
+    // (P5) ci-dessous, qui couvrent le message et le code de sortie.
     const txt = rendreRapport(rapport({ empty: true, branches: [], filesScanned: 0 }))
-    expect(txt).toContain('Aucun fichier auditable')
+    expect(txt.toUpperCase()).toContain('AUCUN FICHIER AUDITABLE')
     expect(txt).not.toContain('FEU VERT')
   })
 

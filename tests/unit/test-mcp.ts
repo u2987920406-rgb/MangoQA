@@ -42,6 +42,7 @@ function rapport(over: Partial<AuditReport> = {}): AuditReport {
   return {
     projectName: 'projet',
     projectDir: '/p',
+    conditions: { date: '2026-08-08T05:00:00.000Z', cerveau: 'claude', modele: 'claude-opus-5', version: '2.1.0' },
     verdict: { verdict: 'green', rejection: null, branches: {} },
     branches: [branche()],
     filesScanned: 19,
