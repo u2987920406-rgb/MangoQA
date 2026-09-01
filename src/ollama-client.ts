@@ -7,8 +7,13 @@
 // passent par le daemon Ollama LOCAL (localhost:11434), qui gère lui-même la bascule
 // vers le cloud une fois authentifié (`ollama signin`, une fois, hors du code). Même
 // mécanisme que MangoOS pour ses rôles "vision"/"auditeur"/"juge" (brain-registry.json).
+// Raf (2026-08-31) : sur une machine SANS daemon Ollama local, on peut pointer
+// OLLAMA_URL vers Ollama Cloud (https://ollama.com) et OLLAMA_API_KEY porte la clé
+// bearer — la même que celle de Hermes (~/.hermes/.env). Si OLLAMA_API_KEY est
+// absent, aucun header d'auth n'est envoyé (comportement local d'origine intact).
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
 const DEFAULT_MODEL = process.env.QA_OLLAMA_MODEL ?? 'qwen3.5:cloud'
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY?.trim() ?? ''
 
 /** Un appel chat non-streamé à Ollama. Lève si Ollama est injoignable, renvoie une
  *  erreur HTTP, ou dépasse le délai — c'est ce throw que `askLLM` (llm.ts) utilise
@@ -27,7 +32,10 @@ export async function askOllama(system: string, user: string, timeoutMs = DEFAUL
   try {
     const res = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(OLLAMA_API_KEY ? { Authorization: `Bearer ${OLLAMA_API_KEY}` } : {}),
+      },
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         stream: false,
