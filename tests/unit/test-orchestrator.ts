@@ -216,10 +216,11 @@ describe('orchestrator', () => {
     expect(w.audits.length).toBe(1)
     release()
     await p1
-    // Le verrou levé, le signal suivant passe → traitement EN SÉRIE.
+    expect(w.audits.map(s => s.timestamp)).toEqual(['t1', 't2'])
+    // Le signal en attente a été traité, puis le suivant passe en série.
     w.fsx.writeFileSync(SIGNAL_FILE, signalJson('t3'))
     await w.orch.handleSignal(SIGNAL_FILE)
-    expect(w.audits.length).toBe(2)
+    expect(w.audits.length).toBe(3)
   })
 
   it('ordre des visages : retex → branches → verdict → œil → flux → (fin)', async () => {
@@ -362,4 +363,22 @@ describe('orchestrator', () => {
     expect(rel.includes('img.png')).toBe(false)
     expect(rel.length).toBe(2)
   })
+})
+
+
+it('reprend le dernier signal reçu pendant un audit', async () => {
+  let release!: () => void
+  let first = true
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const w = makeWorld('t1', { onAudit: async () => {
+    if (first) { first = false; await gate }
+  } })
+  const running = w.orch.handleSignal(SIGNAL_FILE)
+  w.fsx.writeFileSync(SIGNAL_FILE, signalJson('t2'))
+  await w.orch.handleSignal(SIGNAL_FILE)
+  release()
+  await running
+  expect(w.audits.map(s => s.timestamp)).toEqual(['t1', 't2'])
+  const verdict = [...w.writes.entries()].find(([file]) => file.endsWith('audit-verdict.json'))
+  expect(JSON.parse(verdict![1]).signalTimestamp).toBe('t2')
 })
