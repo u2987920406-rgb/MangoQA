@@ -1,7 +1,7 @@
 # 🥭 Mango QA — Audit Fantôme pour MangoOS
 
 Processus Node.js **indépendant** de MangoOS qui audite chaque phase de build et
-répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
+répond un verdict **Feu Vert / Feu Rouge / Non vérifié** par le système de fichiers.
 
 > ⚠️ **Reconstruction du 2026-06-19.** Le code original (testé à l'atelier) n'a pas
 > pu être rapatrié (clé USB absente). Cette version a été **reconstruite à partir
@@ -11,6 +11,19 @@ répond un verdict **Feu Vert / Feu Rouge** par le système de fichiers.
 > détails internes des branches (prompts, seuils) sont une réimplémentation, pas
 > le code byte-identique de l'atelier. Si l'original revient, comparer puis
 > remplacer/fusionner.
+
+## Contrat autonome — septembre 2026
+
+Lancer les deux projets depuis `mangoai` avec `npm run setup`, puis `npm start`.
+Le dépôt MangoQA doit se trouver à côté de mangoai, ou être indiqué par `MANGOQA_DIR`.
+Le modèle d'audit doit être configuré séparément : démarrer le processus ne prouve pas que son fournisseur répond.
+
+Un contrôle techniquement impossible donne `skip`, une branche sans objet donne `not_applicable`.
+Un verdict `green` exige au moins une branche bloquante réussie et aucune branche bloquante en `skip`.
+Un échec prouvé donne `red` ; sinon, une vérification incomplète donne `unknown`.
+Le verdict porte `signalTimestamp` pour permettre à Mango de distinguer l'audit demandé d'un résultat ancien.
+Un nouveau signal reçu pendant un audit est repris à sa fin (le dernier état de chaque projet est conservé).
+La création peut continuer sans audit ; la publication refuse les audits absents, incomplets ou non corrélés.
 
 ## Architecture
 

@@ -79,5 +79,6 @@ export function filterChangedSignals(
     if (prev === mtime) continue
     toProcess.push(p)
   }
+  state.firstScan = false
   return toProcess
 }
