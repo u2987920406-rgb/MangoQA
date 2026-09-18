@@ -33,14 +33,15 @@ export interface BranchSummary {
 
 /** Verdict lu par MangoOS (mangoqa.ts → QAVerdict). CONTRAT FIGÉ. */
 export interface QAVerdict {
-  verdict: 'green' | 'red'
+  signalTimestamp?: string
+  verdict: 'green' | 'red' | 'unknown'
   rejection: Rejection | null
   branches: Record<string, BranchSummary>
 }
 
 // ── Types internes Mango QA ──────────────────────────────────────────────────
 
-export type BranchStatus = 'pass' | 'fail' | 'skip'
+export type BranchStatus = 'pass' | 'fail' | 'skip' | 'not_applicable'
 
 /** Fichier de projet lu (borné) et passé aux branches. */
 export interface ProjectFile {

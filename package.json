@@ -3,10 +3,10 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Mango QA — framework d'audit autonome (Audit Fantôme) pour MangoOS. Reconstruit depuis le contrat d'interface mangoqa.ts (2026-06-19).",
+  "description": "Mango QA \u2014 framework d'audit autonome (Audit Fant\u00f4me) pour MangoOS. Reconstruit depuis le contrat d'interface mangoqa.ts (2026-06-19).",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "start": "node --import tsx src/index.ts",
     "watch:supervised": "tsx src/watchdog.ts",
     "typecheck": "tsc --noEmit",
     "test:manual": "tsx tests/manual/test-disjoncteur-core.ts && tsx tests/manual/test-disjoncteur-circuit.ts && tsx tests/manual/test-disjoncteur-cost.ts && tsx tests/manual/test-disjoncteur-regression.ts && tsx tests/manual/test-disjoncteur-memory.ts && tsx tests/manual/test-disjoncteur-killswitch.ts && tsx tests/manual/test-disjoncteur-runner.ts && tsx tests/manual/test-design-eye.ts && tsx tests/manual/test-flux-eye.ts && tsx tests/manual/test-flux-deep.ts && tsx tests/manual/test-llm.ts && tsx tests/manual/test-suite-eye.ts",

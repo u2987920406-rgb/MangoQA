@@ -204,6 +204,8 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
   const lastHandled = new Map<string, string>() // projectDir → timestamp traité (dédup add+change)
   const inFlight = new Set<string>() // verrou anti-chevauchement par projet
 
+  const pendingSignals = new Map<string, string>()
+
   async function handleSignal(signalFile: string): Promise<void> {
     let signal: PhaseSignal
     try {
@@ -218,7 +220,10 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
 
     // Dédup (add + change pour la même écriture) + verrou.
     if (lastHandled.get(projDir) === signal.timestamp) return
-    if (inFlight.has(projDir)) return
+    if (inFlight.has(projDir)) {
+      pendingSignals.set(projDir, signalFile)
+      return
+    }
     inFlight.add(projDir)
     lastHandled.set(projDir, signal.timestamp)
 
@@ -243,6 +248,7 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
       )
 
       const verdict = buildVerdict(results, signal.retryCount)
+      verdict.signalTimestamp = signal.timestamp
       const qaDir = path.join(projDir, '.mangoqa')
       if (!fsx.existsSync(qaDir)) fsx.mkdirSync(qaDir)
       fsx.writeFileSync(path.join(qaDir, 'audit-verdict.json'), JSON.stringify(verdict, null, 2))
@@ -296,6 +302,8 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
       if (verdict.verdict === 'red' && verdict.rejection) {
         runners.recordRejection(workspace, signal, verdict.rejection)
         log(`[mango-qa] 🔴 Feu Rouge (${verdict.rejection.branch}) en ${now() - t0}ms → ${verdict.rejection.corrective_action}`)
+      } else if (verdict.verdict === 'unknown') {
+        log('[mango-qa] ⚪ Audit incomplet — non vérifié')
       } else {
         log(`[mango-qa] ✅ Feu Vert en ${now() - t0}ms`)
       }
@@ -304,6 +312,9 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
       // Fail-open : on n'écrit pas de verdict → MangoOS continue après timeout.
     } finally {
       inFlight.delete(projDir)
+      const pending = pendingSignals.get(projDir)
+      pendingSignals.delete(projDir)
+      if (pending) await handleSignal(pending)
     }
   }
 

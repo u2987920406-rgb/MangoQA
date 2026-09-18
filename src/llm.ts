@@ -235,7 +235,7 @@ export async function auditWithLLM(
   ask: (system: string, user: string) => Promise<string> = askLLM,
 ): Promise<BranchFinding> {
   if (ctx.files.length === 0) {
-    return { status: 'skip', summary: 'Aucun fichier pertinent pour cette branche.' }
+    return { status: 'not_applicable', summary: 'Aucun fichier pertinent pour cette branche.' }
   }
   const adviceClause = meta.adviceOnly
     ? '\nIMPORTANT : tu donnes des CONSEILS, tu ne bloques jamais. N\'utilise que "pass" (avec tes suggestions dans summary) ou "skip", JAMAIS "fail".'
@@ -265,8 +265,11 @@ export async function auditWithLLM(
     }>(raw)
     if (!parsed) return { status: 'skip', summary: 'Réponse d\'audit illisible (ignorée).' }
 
-    let status = (parsed.status ?? 'pass').toLowerCase() as BranchStatus
-    if (!['pass', 'fail', 'skip'].includes(status)) status = 'pass'
+    let status = (typeof parsed.status === 'string' ? parsed.status.toLowerCase() : 'skip') as BranchStatus
+    // A valid model 'skip' means outside its specialty (JSON_CONTRACT).
+    // Transport/parse failures remain 'skip' and make the global audit unknown.
+    if (status === 'skip' && parsed.status === 'skip') status = 'not_applicable'
+    else if (!['pass', 'fail'].includes(status)) status = 'skip'
     // Une branche de conseil ne bloque jamais.
     if (meta.adviceOnly && status === 'fail') status = 'pass'
 

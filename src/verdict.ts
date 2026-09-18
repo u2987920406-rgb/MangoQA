@@ -21,7 +21,9 @@ export function buildVerdict(results: BranchResult[], retryCount: number): QAVer
   const firstFail = results.find(r => r.branch.blocking && r.finding.status === 'fail')
 
   if (!firstFail) {
-    return { verdict: 'green', rejection: null, branches }
+    const audited = results.some(r => r.branch.blocking && r.finding.status === 'pass')
+    const incomplete = results.some(r => r.branch.blocking && r.finding.status === 'skip')
+    return { verdict: audited && !incomplete ? 'green' : 'unknown', rejection: null, branches }
   }
 
   const f = firstFail.finding

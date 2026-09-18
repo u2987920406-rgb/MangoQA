@@ -133,3 +133,11 @@ describe('watch-fallback', () => {
     })
   })
 })
+
+it('baseline transitions automatically and detects the next change', () => {
+  const state = initFallbackScanState()
+  expect(filterChangedSignals(['/signal'], () => 1, state)).toEqual([])
+  expect(state.firstScan).toBe(false)
+  expect(filterChangedSignals(['/signal'], () => 2, state)).toEqual(['/signal'])
+  expect(filterChangedSignals(['/signal'], () => 2, state)).toEqual([])
+})

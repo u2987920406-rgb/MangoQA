@@ -111,3 +111,22 @@ describe('buildVerdict', () => {
     expect(v.rejection!.rule_ref).toBe('security')
   })
 })
+// Unknown is neither approval nor a request to rewrite healthy code.
+describe('unverified audits', () => {
+  it('empty results are not approval', () => {
+    expect(buildVerdict([], 0).verdict).toBe('unknown')
+  })
+  it('all skipped and partially skipped blocking checks are unknown', () => {
+    const skipped = blocking('security', { status: 'skip', summary: 'timeout' })
+    expect(buildVerdict([skipped], 0).verdict).toBe('unknown')
+    expect(buildVerdict([blocking('architecture', pass()), skipped], 0).verdict).toBe('unknown')
+  })
+  it('a proven failure still wins over incomplete checks', () => {
+    expect(buildVerdict([blocking('security', fail()), blocking('tests', {status:'skip', summary:'offline'})], 0).verdict).toBe('red')
+  })
+})
+
+it('non-applicable specialties do not turn a completed relevant audit into a failure', () => {
+  expect(buildVerdict([blocking('architecture', pass()), blocking('tests', {status:'not_applicable', summary:'page statique'})], 0).verdict).toBe('green')
+  expect(buildVerdict([blocking('tests', {status:'not_applicable', summary:'vide'})], 0).verdict).toBe('unknown')
+})
