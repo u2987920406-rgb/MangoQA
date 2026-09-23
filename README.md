@@ -50,6 +50,20 @@ Mango QA  ───────────────────────�
         ▼
 Mango QA écrit  <projet>/.mangoqa/audit-verdict.json    (QAVerdict)
         │
+        │
+        │   🔀 Visage 4 : LAYA (SHADOW — gaté QA_LAYA=on, défaut off)
+        │      2e avis calibré sur les branches BLOQUANTES (fail/pass), pont
+        │      Python laya-bridge/ (checkpoint multilingual, 1 forward pass)
+        │      JAMAIS décisionnaire : le verdict LLM est déjà écrit.
+        │      ─► <projet>/.mangoqa/laya-shadow.jsonl (dataset de fine-tuning)
+        │
+        │
+        │   🔀 Visage 4 : LAYA (SHADOW — gaté QA_LAYA=on, défaut off)
+        │      2e avis calibré sur les branches BLOQUANTES (fail/pass), pont
+        │      Python laya-bridge/ (checkpoint multilingual, 1 forward pass)
+        │      JAMAIS décisionnaire : le verdict LLM est déjà écrit.
+        │      ─► <projet>/.mangoqa/laya-shadow.jsonl (dataset de fine-tuning)
+        │
         └─► si red : journalise dans .mangoqa-retex.jsonl (Boîte Noire)
             et réinjecte préemptivement aux audits suivants.
 ```

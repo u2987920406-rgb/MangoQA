@@ -24,6 +24,7 @@ import { analyzeSuite } from './suite-eye/runner.js'
 import type { SuiteObservation } from './suite-eye/audit.js'
 import { walkTree } from './fs-shared.js'
 import { sortByPriority } from './priority.js'
+import { shadowWithLaya } from './laya.js'
 
 export const MAX_FILES = 40
 export const MAX_FILE_CHARS = 16_000
@@ -49,6 +50,8 @@ export interface FsLike {
   existsSync(p: string): boolean
   readFileSync(p: string): string
   writeFileSync(p: string, data: string): void
+  /** Journal append (visage Laya). Optionnel : absent → shadow non journalisé (warn). */
+  appendFileSync?(p: string, data: string): void
   mkdirSync(p: string): void
   readdirSync(p: string): DirentLike[]
   isFile(p: string): boolean
@@ -58,6 +61,7 @@ export interface FsLike {
 export const realFs: FsLike = {
   existsSync: p => fs.existsSync(p),
   readFileSync: p => fs.readFileSync(p, 'utf8'),
+  appendFileSync: (p, data) => fs.appendFileSync(p, data, 'utf8'),
   writeFileSync: (p, data) => {
     // Atomic write: tmp+rename protects against mid-write crashes corrupting critical data
     const tmp = `${p}.tmp`
@@ -161,7 +165,29 @@ export interface OrchestratorRunners {
     deps: object,
   ) => Promise<FluxDeepObservation>
   analyzeSuite: (workspaceDir: string, deps: object) => { obs: SuiteObservation }
+  /** Visage 4 — Laya SHADOW (2ᵉ avis calibré, jamais le verdict). Optionnel. */
+  shadowLaya?: (args: {
+    signal: PhaseSignal
+    results: BranchResult[]
+    relevantOf: (branchId: string) => ProjectFile[]
+    fs: FsLike
+    projDir: string
+    log?: (line: string) => void
+  }) => Promise<unknown>
 }
+
+/** Wrapper du visage Laya : l'orchestrateur n'appelle ceci QUE si `layaOn`
+ *  (défaut off), d'où `QA_LAYA` forcé ici — le gating réel est en amont. */
+const shadowLaya: NonNullable<OrchestratorRunners['shadowLaya']> = async args =>
+  shadowWithLaya({
+    signal: args.signal,
+    results: args.results,
+    relevantOf: args.relevantOf,
+    fs: args.fs,
+    projDir: args.projDir,
+    log: args.log,
+    env: { QA_LAYA: 'on' } as NodeJS.ProcessEnv,
+  })
 
 const DEFAULT_RUNNERS: OrchestratorRunners = {
   loadRetexConstraints,
@@ -173,6 +199,7 @@ const DEFAULT_RUNNERS: OrchestratorRunners = {
   shouldRunDeep,
   runFluxDeep,
   analyzeSuite,
+  shadowLaya,
 }
 
 // ── Orchestrateur ────────────────────────────────────────────────────────────
@@ -182,6 +209,8 @@ export interface OrchestratorOptions {
   /** Câblage de l'Auditeur de Suite (visage cross-app). Défaut OFF (env SUITE_EYE=on)
    *  pour ne pas changer le comportement actuel — best-effort, fail-open. */
   suiteEye?: boolean
+  /** Visage 4 — Laya SHADOW. Défaut OFF (env QA_LAYA=on). Jamais décisionnaire. */
+  laya?: boolean
   fs?: FsLike
   now?: () => number
   log?: (line: string) => void
@@ -196,6 +225,7 @@ export interface Orchestrator {
 export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
   const { workspace, branches } = opts
   const suiteEye = opts.suiteEye ?? false
+  const layaOn = opts.laya ?? process.env.QA_LAYA === 'on'
   const fsx = opts.fs ?? realFs
   const now = opts.now ?? (() => Date.now())
   const log = opts.log ?? ((line: string) => console.log(line))
@@ -252,6 +282,24 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
       const qaDir = path.join(projDir, '.mangoqa')
       if (!fsx.existsSync(qaDir)) fsx.mkdirSync(qaDir)
       fsx.writeFileSync(path.join(qaDir, 'audit-verdict.json'), JSON.stringify(verdict, null, 2))
+
+      // Visage 4 — Laya (SHADOW) : 2ᵉ avis calibré À CÔTÉ du verdict, jamais dedans.
+      // Le verdict ci-dessus est déjà écrit : ce qui suit ne peut que l'observer.
+      // GATÉ (QA_LAYA=on, défaut off) ; best-effort, fail-open, jamais silencieux.
+      if (layaOn) {
+        try {
+          await runners.shadowLaya?.({
+            signal,
+            results,
+            relevantOf: id => branches.find(b => b.id === id)?.relevant(files) ?? [],
+            fs: fsx,
+            projDir,
+            log,
+          })
+        } catch (err) {
+          console.warn('[mango-qa] laya:', (err as Error)?.message ?? err)
+        }
+      }
 
       // Visage 3 — l'Œil Design : mesure déterministe (contraste/tokens/conformité)
       // sur les mêmes fichiers. Écrit ses observations À CÔTÉ du verdict, ne le

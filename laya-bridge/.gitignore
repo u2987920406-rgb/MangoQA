@@ -1,0 +1,4 @@
+# pont Laya → MangoQA — voir server.py
+.venv/
+__pycache__/
+*.log
