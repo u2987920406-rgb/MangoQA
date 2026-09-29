@@ -39,10 +39,9 @@ Mango QA  ───────────────────────�
         │      ⚡ performance · 🧪 tests · 🎨 design-system (conseil)
         │      ─► verdicts binaires (Feu Vert/Rouge) dans <projet>/.mangoqa/
         │
-        │   👀 Visage 2 : OBSERVATEUR-CONSEIL — CÂBLÉ, mais OPT-IN (gate QA_OBSERVER)
+        │   👀 Visage 2 : OBSERVATEUR-CONSEIL — CÂBLÉ et ARMÉ (gate QA_OBSERVER=on)
         │      Analyse patterns de rejets récurrents sur fenêtre glissante bornée
         │      Aucun garde-fou, pas de verdict — conseils à Raf seulement
-        │      ⚠ Gate QA_OBSERVER NON ARMÉ en production : ce visage ne tourne pas
         │      ─► rapport CONSTAT dans <projet>/.mangoqa/observer-report.json
         │
         │   🧠 Visage 3 : Flux/Suite (orchestration, retry, apprentissage)

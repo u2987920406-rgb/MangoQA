@@ -40,7 +40,12 @@ const gateArme = env.split('\n').some((l) => l.startsWith('QA_OBSERVER=') && !l.
 // [3] Le README doit refleter (cable) ET (gate arme ou signale).
 {
   check('le README declare le visage comme CÂBLÉ', /CÂBL[EÉ]/.test(readme))
-  if (!gateArme) {
+  // Le README doit dire l'etat REEL du gate, dans les deux sens : arme → annonce arme ;
+  // off → signale off. C'est ce qui interdit le faux actif (B17).
+  if (gateArme) {
+    check('gate ARME → le README l annonce arme', /CÂBLÉ et ARM[EÉ]|CÂBLÉ.*ARM[EÉ]/.test(readme))
+    check('gate ARME → le README ne dit plus NON ARMÉ', !readme.includes('NON ARMÉ'))
+  } else {
     check('gate OFF → le README le SIGNALE (pas de faux actif)',
       readme.includes('NON ARMÉ') || readme.includes('non armé'))
   }

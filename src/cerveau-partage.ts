@@ -65,8 +65,10 @@ export function lireCerveauAuditeur(env: NodeJS.ProcessEnv = process.env): Cerve
 }
 
 export interface ResolutionCerveau {
-  /** Le modele que QA_OLLAMA_MODEL doit valoir (voie Ollama de l'audit). */
-  modeleOllama: string | null
+  /** Variable de MangoQA que le role `auditeur` du registre designe. */
+  variable: 'QA_MODEL' | 'QA_OLLAMA_MODEL'
+  /** Le modele attendu / retenu pour cette variable. */
+  modele: string | null
   /** Vrai quand l'exploitant a fixe la valeur lui-meme : on ne la remplace pas. */
   choixExplicite: boolean
   /** Message de divergence a journaliser, ou `null` si tout concorde. */
@@ -75,31 +77,44 @@ export interface ResolutionCerveau {
 }
 
 /**
- * Resout le cerveau de la voie Ollama de MangoQA a partir du registre partage.
+ * Quelle variable de MangoQA correspond au provider du registre ?
+ *
+ * MangoQA a DEUX voies : `QA_MODEL` (primaire, abonnement Claude Code) et
+ * `QA_OLLAMA_MODEL` (repli souverain, ollama-client.ts). Le registre partage dit
+ * `provider` — donc comparer sa valeur a `QA_OLLAMA_MODEL` sans regarder le provider
+ * signalerait une fausse divergence (ou en masquerait une vraie). `claude` designe la
+ * voie primaire ; tout le reste designe la voie Ollama.
+ */
+export function variablePourProvider(provider: string): 'QA_MODEL' | 'QA_OLLAMA_MODEL' {
+  return provider.trim().toLowerCase() === 'claude' ? 'QA_MODEL' : 'QA_OLLAMA_MODEL'
+}
+
+/**
+ * Resout le cerveau de l'auditeur a partir du registre partage.
  * Ne modifie RIEN : renvoie la decision, l'appelant l'applique et la signale.
  */
 export function resoudreCerveauAudit(env: NodeJS.ProcessEnv = process.env): ResolutionCerveau {
   const partage = lireCerveauAuditeur(env)
-  const explicite = (env.QA_OLLAMA_MODEL ?? '').trim()
   if (!partage) {
-    return { modeleOllama: explicite || null, choixExplicite: !!explicite, divergence: null, partage: null }
+    return { variable: 'QA_OLLAMA_MODEL', modele: null, choixExplicite: false, divergence: null, partage: null }
   }
-  // Le registre porte le modele nu (`deepseek-v4.1-flash`) ; la voie Ollama de MangoQA
-  // attend le meme nom. On ne prefixe jamais « provider/ » ici.
+  const variable = variablePourProvider(partage.provider)
   const attendu = partage.model.trim()
+  const explicite = (env[variable] ?? '').trim()
   if (!explicite) {
-    return { modeleOllama: attendu || null, choixExplicite: false, divergence: null, partage }
+    return { variable, modele: attendu || null, choixExplicite: false, divergence: null, partage }
   }
   if (explicite === attendu) {
-    return { modeleOllama: explicite, choixExplicite: true, divergence: null, partage }
+    return { variable, modele: explicite, choixExplicite: true, divergence: null, partage }
   }
   return {
-    modeleOllama: explicite,
+    variable,
+    modele: explicite,
     choixExplicite: true,
     divergence:
       `cerveau de l'auditeur DESALIGNE du registre partage : MangoQA utilise « ${explicite} » ` +
-      `(QA_OLLAMA_MODEL) alors que l'Atelier declare « ${attendu || '(aucun modele)'} » ` +
-      `pour le role « ${ROLE_AUDITEUR} » (${partage.source}). ` +
+      `(${variable}) alors que l'Atelier declare « ${attendu || '(aucun modele)'} » ` +
+      `(${partage.provider}) pour le role « ${ROLE_AUDITEUR} » (${partage.source}). ` +
       `Changer le cerveau dans l'Atelier ne change PAS l'audit tant que ce desaccord dure.`,
     partage,
   }
@@ -111,11 +126,11 @@ export function alignerCerveauAudit(env: NodeJS.ProcessEnv = process.env): strin
   try {
     const r = resoudreCerveauAudit(env)
     if (r.divergence) return `[mango-qa] ⚠️ ${r.divergence}`
-    if (!r.choixExplicite && r.modeleOllama) {
+    if (!r.choixExplicite && r.modele) {
       // Suit le registre : on materialise le choix pour que les modules qui lisent
-      // l'environnement au chargement (ollama-client.ts) voient la meme verite.
-      env.QA_OLLAMA_MODEL = r.modeleOllama
-      return `[mango-qa] cerveau d'audit (voie Ollama) aligne sur le registre partage : « ${r.modeleOllama} »`
+      // l'environnement au chargement (llm.ts, ollama-client.ts) voient la meme verite.
+      env[r.variable] = r.modele
+      return `[mango-qa] cerveau d'audit aligne sur le registre partage : ${r.variable} = « ${r.modele} » (voie ${r.variable === 'QA_MODEL' ? 'Claude/abonnement' : 'Ollama/souveraine'})`
     }
     return null
   } catch {

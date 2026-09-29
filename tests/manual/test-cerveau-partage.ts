@@ -36,17 +36,34 @@ const env = (o: Record<string, string>): NodeJS.ProcessEnv => ({ MANGOAI_BRAIN_R
 }
 
 // [2] Sans choix explicite : l'auditeur SUIT le registre (c'est le sens attendu).
+//     Le registre de ce fixture dit provider=openai → voie Ollama.
 {
   const r = resoudreCerveauAudit(env({}))
-  check('sans QA_OLLAMA_MODEL → suit le registre', r.modeleOllama === 'glm-5.3')
+  check('provider openai → la voie visee est QA_OLLAMA_MODEL', r.variable === 'QA_OLLAMA_MODEL')
+  check('sans choix explicite → suit le registre', r.modele === 'glm-5.3')
   check('...et ce n est pas un choix explicite', r.choixExplicite === false)
   check('...et il n y a rien a signaler', r.divergence === null)
+}
+
+// [2b] Le PROVIDER choisit la variable : un role claude vise QA_MODEL, pas QA_OLLAMA_MODEL.
+//      (Bug corrige le 2026-09-29 : comparer un role claude a QA_OLLAMA_MODEL signalait
+//       une fausse divergence, et masquait une vraie.)
+{
+  const regClaude = path.join(tmp, 'claude-registry.json')
+  fs.writeFileSync(regClaude, JSON.stringify({ auditeur: { provider: 'claude', model: 'sonnet' } }))
+  const e = { MANGOAI_BRAIN_REGISTRY: regClaude } as NodeJS.ProcessEnv
+  const r = resoudreCerveauAudit(e)
+  check('provider claude → la voie visee est QA_MODEL', r.variable === 'QA_MODEL')
+  check('...et le modele attendu est bien lu', r.modele === 'sonnet')
+  check('...sans divergence si QA_MODEL concorde', resoudreCerveauAudit({ ...e, QA_MODEL: 'sonnet' } as NodeJS.ProcessEnv).divergence === null)
+  const d = resoudreCerveauAudit({ ...e, QA_MODEL: 'opus' } as NodeJS.ProcessEnv).divergence
+  check('...et une VRAIE divergence sur QA_MODEL est signalee', d !== null && d.includes('QA_MODEL'))
 }
 
 // [3] Un choix EXPLICITE n'est jamais ecrase — mais une divergence est SIGNALEE.
 {
   const r = resoudreCerveauAudit(env({ QA_OLLAMA_MODEL: 'deepseek-v4.1-flash' }))
-  check('un choix explicite est respecte (non ecrase)', r.modeleOllama === 'deepseek-v4.1-flash')
+  check('un choix explicite est respecte (non ecrase)', r.modele === 'deepseek-v4.1-flash')
   check('...et il est marque comme explicite', r.choixExplicite === true)
   check('...et la DIVERGENCE est signalee', r.divergence !== null)
   check('le message nomme les deux cerveaux',
@@ -66,7 +83,10 @@ const env = (o: Record<string, string>): NodeJS.ProcessEnv => ({ MANGOAI_BRAIN_R
   const sans = { MANGOAI_BRAIN_REGISTRY: path.join(tmp, 'absent.json'), QA_OLLAMA_MODEL: 'x' } as NodeJS.ProcessEnv
   check('registre absent → pas de cerveau partage, pas d exception', lireCerveauAuditeur(sans) === null)
   const r = resoudreCerveauAudit(sans)
-  check('registre absent → on garde la valeur d env', r.modeleOllama === 'x' && r.divergence === null)
+  // Registre absent : on ne sait pas quelle voie viser, donc on ne touche a RIEN
+  // (modele null, aucune divergence). L'env garde sa valeur — c'est le sens de [5].
+  check('registre absent → on ne remplace rien (env garde sa valeur)',
+    r.modele === null && r.divergence === null && sans.QA_OLLAMA_MODEL === 'x')
 }
 
 // [6] alignerCerveauAudit applique le choix et rend le message a journaliser.
