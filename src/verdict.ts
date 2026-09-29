@@ -21,8 +21,31 @@ export function buildVerdict(results: BranchResult[], retryCount: number): QAVer
   const firstFail = results.find(r => r.branch.blocking && r.finding.status === 'fail')
 
   if (!firstFail) {
-    const audited = results.some(r => r.branch.blocking && r.finding.status === 'pass')
-    const incomplete = results.some(r => r.branch.blocking && r.finding.status === 'skip')
+    const blocking = results.filter(r => r.branch.blocking)
+    const audited = blocking.some(r => r.finding.status === 'pass')
+    // D3 (audit 2026-09-28, B2) — durcissement de la règle verte.
+    //
+    // `not_applicable` recouvre deux situations OPPOSÉES : « il n'y avait rien à voir
+    // ici » (inoffensif — un projet statique n'a pas de logique à tester) et « je n'ai
+    // rien pu voir » (un TROU dans l'audit). Les confondre laissait une seule branche
+    // bloquante en `pass` peindre tout le projet en vert : le faux positif rassurant de
+    // B2 (preuve : galerie-albatre — verdict `green` alors que l'architecture écrivait
+    // elle-même « le code fourni (App.jsx tronqué) ne contient pas d'éléments auditable »).
+    //
+    // La condition est donc une MAJORITÉ, pas une existence — c'est la lettre de l'audit
+    // (« un projet où presque rien n'a été vu ») et ça préserve le cas légitime :
+    //   • 1 conclu / 1 muet  → pas de majorité muette → `green` (projet statique : OK)
+    //   • 0 conclu / 1 muet  → majorité muette        → `unknown` (rien n'a été jugé)
+    //   • 2 conclu / 3 muets → majorité muette        → `unknown` (galerie-albatre)
+    // Un `skip` reste bloquant même en minorité : il signale une PANNE ou un doute
+    // (transport, couverture partielle), pas une absence de sujet — c'est B1.
+    const muettes = blocking.filter(
+      r => r.finding.status === 'skip' || r.finding.status === 'not_applicable',
+    ).length
+    const conclu = blocking.length - muettes
+    const incomplete =
+      blocking.some(r => r.finding.status === 'skip') || // panne/doute → toujours bloquant
+      muettes > conclu // la majorité n'a pas jugé → on ne peut pas dire « vert »
     return { verdict: audited && !incomplete ? 'green' : 'unknown', rejection: null, branches }
   }
 

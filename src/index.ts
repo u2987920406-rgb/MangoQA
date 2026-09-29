@@ -26,6 +26,7 @@ import { startDisjoncteur } from './breakers/runner.js'
 import { runObserver, observerEnabled } from './observer-runner.js'
 import { realFs } from './orchestrator.js'
 import { scanForSignals, filterChangedSignals, initFallbackScanState } from './watch-fallback.js'
+import { sonderCerveauAudit, formaterSonde } from './sonde-cerveau.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -60,6 +61,27 @@ function beat(): void {
 // ── Démarrage ────────────────────────────────────────────────────────────────
 beat()
 setInterval(beat, HEARTBEAT_MS)
+
+// D3 (audit 2026-09-28, B1) — SONDE DE CERVEAU au démarrage.
+// Le heartbeat ci-dessus prouve que le PROCESS vit ; il ne prouve pas qu'un audit
+// peut être rendu. C'est précisément le trou de B1 : MangoQA « actif » et incapable
+// d'auditer, sans que rien ne l'ait signalé. On vérifie donc, une fois au boot,
+// que le cerveau d'audit RÉPOND — et on alerte bruyamment sinon.
+// Best-effort : ne bloque pas le démarrage, ne lève jamais.
+void sonderCerveauAudit()
+  .then((r) => {
+    console.warn(formaterSonde(r)) // console.warn : visible même en production
+    if (r.etat === 'panne') {
+      console.warn(
+        '[mango-qa] ⚠️  AUCUN AUDIT NE SERA RENDU tant que ce cerveau est injoignable : ' +
+          'MangoOS continuera (fail-open) alors que la vérification est à l\'arrêt. ' +
+          "C'est un état à corriger, pas un état normal.",
+      )
+    }
+  })
+  .catch(() => {
+    /* la sonde ne doit jamais empêcher le démarrage */
+  })
 
 // Visage 2 — Observateur-Conseil : un run au boot (constat sur l'historique déjà là),
 // gaté strictement — gate OFF = cette ligne ne fait RIEN (pas d'appel à runObserver).

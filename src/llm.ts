@@ -16,11 +16,16 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
 import { askOllama } from './ollama-client.js'
-import { renderFilesDetailed } from './fs-shared.js'
+import { decouperEnLots, agregerConstats, type ConstatLot } from './lots-audit.js'
 
 const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation). */
 const FILE_PAYLOAD_CAP = 24_000
+/** D4 (B3) — nombre max de lots audités par branche : garde-fou de coût. Chaque lot
+ *  tient dans FILE_PAYLOAD_CAP. Au-delà, les fichiers non vus sont COMPTÉS (couverture
+ *  partielle assumée, jamais dissimulée). 8 lots ≈ 192 000 caractères vus par branche,
+ *  contre 24 000 avant — de quoi couvrir etang-des-roseaux (12 %) ou toeic-quest (2 %). */
+const MAX_LOTS_PAR_BRANCHE = Number(process.env.QA_MAX_LOTS ?? 8)
 
 /** Secrets à neutraliser de l'environnement transmis au SDK (liste non-exhaustive). */
 const SECRET_ENV_KEYS = [
@@ -262,53 +267,63 @@ export async function auditWithLLM(
         ? "\n\nSignal projet (hors delta) : des fichiers de test (*.test.*/*.spec.*) EXISTENT ailleurs dans ce projet. Ne conclus PAS à une absence totale de tests sur la seule base de ce delta — juge seulement si LA LOGIQUE LIVRÉE ICI aurait dû être testée."
         : "\n\nSignal projet (hors delta) : aucun fichier de test (*.test.*/*.spec.*) n'existe nulle part dans ce projet."
       : ''
-  // ── Diagnostic de couverture (B2) ─────────────────────────────────────────
-  // Un audit qui n'a vu qu'un PRÉFIXE du projet (cap de caractères atteint,
-  // fichiers jamais montrés) ne doit jamais pouvoir se déclarer « hors sujet » :
-  // dire « il n'y a rien à voir » sans avoir tout vu est un faux positif
-  // rassurant (le pire des défauts). On lui dit ce qui manque, et on rend son
-  // « skip » invérifiable inexploitable plus bas.
-  const payload = renderFilesDetailed(
-    ctx.files.map(f => ({ ...f, content: redactSecrets(f.content) })),
-    FILE_PAYLOAD_CAP,
-  )
-  const coverageIncomplete = payload.droppedCount > 0 || payload.truncated
+  // ── D4 (audit 2026-09-28, B3) : LOTS successifs, plus un préfixe unique ────
+  // Avant : `renderFiles` s'arrêtait au premier fichier qui déborde → 12 % du projet
+  // vu sur etang-des-roseaux, 2 % sur toeic-quest, et l'audit ne le savait même pas.
+  // Maintenant : on TRIE par risque (sortByPriority, écrit pour ça et jamais branché)
+  // puis on découpe en lots bornés, et chaque lot est audité. Les constats sont agrégés
+  // par une règle de sûreté (un `fail` gagne, un `pass` exige l'unanimité).
+  const payloadFiles = ctx.files.map(f => ({ ...f, content: redactSecrets(f.content) }))
+  const lots = decouperEnLots(payloadFiles, FILE_PAYLOAD_CAP, MAX_LOTS_PAR_BRANCHE)
+  // Couverture partielle : soit le cap a mordu DANS un fichier, soit des fichiers n'ont
+  // pas été vus faute de lots. Dans les deux cas l'audit ne peut pas conclure « conforme ».
+  const coverageIncomplete = lots.tronque || lots.fichiersOmis > 0
   const coverageBlock = coverageIncomplete
-    ? `\n\n⚠️ COUVERTURE PARTIELLE : tu ne vois que ${payload.shownCount} fichier(s) sur ${payload.shownCount + payload.droppedCount}${payload.truncated ? ', le dernier étant coupé en plein milieu' : ''}. Le reste du projet ne t'a PAS été montré. En conséquence : ne déclare JAMAIS "skip" (hors de ta spécialité) — tu n'as pas vu assez pour l'affirmer. Si tu ne peux pas juger, réponds "fail" en expliquant dans correctiveAction quelle partie du projet il faut te montrer.`
+    ? `\n\n⚠️ COUVERTURE PARTIELLE : tu ne vois qu'une PARTIE du projet${lots.tronque ? ' (le dernier fichier du lot est coupé en plein milieu)' : ''}. Le reste ne t'a PAS été montré. En conséquence : ne déclare JAMAIS "skip" (hors de ta spécialité) — tu n'as pas vu assez pour l'affirmer. Si tu ne peux pas juger, réponds "fail" en expliquant dans correctiveAction quelle partie du projet il faut te montrer.`
     : ''
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}${coverageBlock}\n\nFichiers livrés à auditer :\n${payload.text}`
 
   try {
-    const raw = await ask(system, user)
-    const parsed = parseFirstJson<{
-      status?: string
-      summary?: string
-      rejectionId?: string
-      correctiveAction?: string
-      ruleRef?: string
-    }>(raw)
-    if (!parsed) return { status: 'skip', summary: 'Réponse d\'audit illisible (ignorée).' }
-
-    let status = (typeof parsed.status === 'string' ? parsed.status.toLowerCase() : 'skip') as BranchStatus
-    // A valid model 'skip' means outside its specialty (JSON_CONTRACT).
-    // Transport/parse failures remain 'skip' and make the global audit unknown.
-    // Mais si la couverture était PARTIELLE, ce « hors sujet » est invérifiable
-    // (il n'a pas vu le projet) → on refuse de le convertir en inoffensif :
-    // il reste 'skip', donc le verdict global reste 'unknown' et jamais 'green'.
-    if (status === 'skip' && parsed.status === 'skip') {
-      status = coverageIncomplete ? 'skip' : 'not_applicable'
-    } else if (!['pass', 'fail'].includes(status)) status = 'skip'
-    // Une branche de conseil ne bloque jamais.
-    if (meta.adviceOnly && status === 'fail') status = 'pass'
-
-    const finding: BranchFinding = {
-      status,
-      summary: (parsed.summary ?? '').trim() || (status === 'pass' ? 'Conforme.' : 'Sans détail.'),
+    // Un appel par lot, borné. Le premier lot est le plus prioritaire (risque décroissant).
+    const constats: ConstatLot[] = []
+    for (let i = 0; i < lots.lots.length; i++) {
+      const numero = lots.lots.length > 1 ? ` [lot ${i + 1}/${lots.lots.length}]` : ''
+      const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}${coverageBlock}\n\nFichiers livrés à auditer${numero} :\n${lots.lots[i]}`
+      const raw = await ask(system, user)
+      const parsed = parseFirstJson<{
+        status?: string
+        summary?: string
+        rejectionId?: string
+        correctiveAction?: string
+        ruleRef?: string
+      }>(raw)
+      if (!parsed) {
+        constats.push({ status: 'skip', summary: `Réponse d'audit illisible (lot ${i + 1}).` })
+        continue
+      }
+      let status = (typeof parsed.status === 'string' ? parsed.status.toLowerCase() : 'skip') as BranchStatus
+      // Un « skip » du modèle = hors spécialité. Si la couverture était partielle, ce
+      // jugement est invérifiable (il n'a pas vu le projet) → il reste 'skip', donc le
+      // verdict global reste 'unknown' et jamais 'green'.
+      if (status === 'skip' && parsed.status === 'skip') {
+        status = coverageIncomplete ? 'skip' : 'not_applicable'
+      } else if (!['pass', 'fail'].includes(status)) status = 'skip'
+      // Une branche de conseil ne bloque jamais.
+      if (meta.adviceOnly && status === 'fail') status = 'pass'
+      constats.push({
+        status,
+        summary: (parsed.summary ?? '').trim() || (status === 'pass' ? 'Conforme.' : 'Sans détail.'),
+        rejectionId: parsed.rejectionId?.trim(),
+        correctiveAction: parsed.correctiveAction?.trim(),
+        ruleRef: parsed.ruleRef?.trim(),
+      })
     }
-    if (status === 'fail') {
-      finding.rejectionId = (parsed.rejectionId ?? `${meta.id}-anomalie`).trim()
-      finding.correctiveAction = (parsed.correctiveAction ?? finding.summary).trim()
-      finding.ruleRef = (parsed.ruleRef ?? meta.id).trim()
+    // Agrégation : fusion des constats de tous les lots en UN constat de branche.
+    const agrege = agregerConstats(constats, coverageIncomplete)
+    const finding: BranchFinding = { status: agrege.status, summary: agrege.summary }
+    if (agrege.status === 'fail') {
+      finding.rejectionId = (agrege.rejectionId ?? `${meta.id}-anomalie`).trim()
+      finding.correctiveAction = (agrege.correctiveAction ?? finding.summary).trim()
+      finding.ruleRef = (agrege.ruleRef ?? meta.id).trim()
     }
     return finding
   } catch (err) {
