@@ -16,7 +16,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
 import { askOllama } from './ollama-client.js'
-import { renderFiles } from './fs-shared.js'
+import { renderFilesDetailed } from './fs-shared.js'
 
 const QA_MODEL = process.env.QA_MODEL ?? 'sonnet'
 /** Plafond de caractères de code injectés dans un prompt d'audit (anti-saturation). */
@@ -262,7 +262,21 @@ export async function auditWithLLM(
         ? "\n\nSignal projet (hors delta) : des fichiers de test (*.test.*/*.spec.*) EXISTENT ailleurs dans ce projet. Ne conclus PAS à une absence totale de tests sur la seule base de ce delta — juge seulement si LA LOGIQUE LIVRÉE ICI aurait dû être testée."
         : "\n\nSignal projet (hors delta) : aucun fichier de test (*.test.*/*.spec.*) n'existe nulle part dans ce projet."
       : ''
-  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}\n\nFichiers livrés à auditer :\n${renderFiles(ctx.files.map(f => ({ ...f, content: redactSecrets(f.content) })), FILE_PAYLOAD_CAP)}`
+  // ── Diagnostic de couverture (B2) ─────────────────────────────────────────
+  // Un audit qui n'a vu qu'un PRÉFIXE du projet (cap de caractères atteint,
+  // fichiers jamais montrés) ne doit jamais pouvoir se déclarer « hors sujet » :
+  // dire « il n'y a rien à voir » sans avoir tout vu est un faux positif
+  // rassurant (le pire des défauts). On lui dit ce qui manque, et on rend son
+  // « skip » invérifiable inexploitable plus bas.
+  const payload = renderFilesDetailed(
+    ctx.files.map(f => ({ ...f, content: redactSecrets(f.content) })),
+    FILE_PAYLOAD_CAP,
+  )
+  const coverageIncomplete = payload.droppedCount > 0 || payload.truncated
+  const coverageBlock = coverageIncomplete
+    ? `\n\n⚠️ COUVERTURE PARTIELLE : tu ne vois que ${payload.shownCount} fichier(s) sur ${payload.shownCount + payload.droppedCount}${payload.truncated ? ', le dernier étant coupé en plein milieu' : ''}. Le reste du projet ne t'a PAS été montré. En conséquence : ne déclare JAMAIS "skip" (hors de ta spécialité) — tu n'as pas vu assez pour l'affirmer. Si tu ne peux pas juger, réponds "fail" en expliquant dans correctiveAction quelle partie du projet il faut te montrer.`
+    : ''
+  const user = `Projet : ${ctx.signal.projectName} — phase : ${ctx.signal.phase} (tentative ${ctx.signal.retryCount}).${retexBlock}${testsSignalBlock}${coverageBlock}\n\nFichiers livrés à auditer :\n${payload.text}`
 
   try {
     const raw = await ask(system, user)
@@ -278,8 +292,12 @@ export async function auditWithLLM(
     let status = (typeof parsed.status === 'string' ? parsed.status.toLowerCase() : 'skip') as BranchStatus
     // A valid model 'skip' means outside its specialty (JSON_CONTRACT).
     // Transport/parse failures remain 'skip' and make the global audit unknown.
-    if (status === 'skip' && parsed.status === 'skip') status = 'not_applicable'
-    else if (!['pass', 'fail'].includes(status)) status = 'skip'
+    // Mais si la couverture était PARTIELLE, ce « hors sujet » est invérifiable
+    // (il n'a pas vu le projet) → on refuse de le convertir en inoffensif :
+    // il reste 'skip', donc le verdict global reste 'unknown' et jamais 'green'.
+    if (status === 'skip' && parsed.status === 'skip') {
+      status = coverageIncomplete ? 'skip' : 'not_applicable'
+    } else if (!['pass', 'fail'].includes(status)) status = 'skip'
     // Une branche de conseil ne bloque jamais.
     if (meta.adviceOnly && status === 'fail') status = 'pass'
 

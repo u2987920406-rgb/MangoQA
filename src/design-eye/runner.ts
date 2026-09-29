@@ -104,13 +104,17 @@ export function runDesignEye(
   deps: DesignEyeDeps = {},
   brief?: DesignContext['brief'],
 ): DesignObservation {
-  const writeFile = deps.writeFile ?? atomicWriteFileSync
+  const writeFile = deps.writeFile ?? ((f, d) => {
+    // mkdir réservé à l'écrivain RÉEL : un writer injecté en test ne doit
+    // jamais toucher le disque (cf. runner Disjoncteur).
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    atomicWriteFileSync(f, d)
+  })
   const now = deps.now ?? (() => Date.now())
 
   const obs = inspectProjectDesign(files, brief)
   try {
     const dir = path.join(projDir, '.mangoqa')
-    fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
   } catch (err) {
     // fail-open : l'Œil n'arrête jamais la production pour un échec d'écriture.

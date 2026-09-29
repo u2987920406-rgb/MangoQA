@@ -71,7 +71,12 @@ export interface FluxAnalysis {
 /** Un passage de l'Auditeur sur un projet : lit le source UNE fois, mesure, écrit
  * les observations, et renvoie graphe + rapport + fichiers (pour le Tier 1). */
 export function analyzeFlux(projDir: string, deps: FluxEyeDeps = {}): FluxAnalysis {
-  const writeFile = deps.writeFile ?? atomicWriteFileSync
+  const writeFile = deps.writeFile ?? ((f, d) => {
+    // mkdir réservé à l'écrivain RÉEL : un writer injecté en test ne doit
+    // jamais toucher le disque (cf. runner Disjoncteur).
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    atomicWriteFileSync(f, d)
+  })
   const now = deps.now ?? (() => Date.now())
   const readSource = deps.readSource ?? readAllSource
 
@@ -80,7 +85,6 @@ export function analyzeFlux(projDir: string, deps: FluxEyeDeps = {}): FluxAnalys
   const obs = inspectFlux(graph)
   try {
     const dir = path.join(projDir, '.mangoqa')
-    fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
   } catch (err) {
     // fail-open : l'Auditeur n'arrête jamais la production pour un échec d'écriture.

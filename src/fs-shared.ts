@@ -44,18 +44,51 @@ export function atomicWriteFileSync(file: string, data: string): void {
  *  entre visages (llm.ts : « …(tronqué)… » avec accent ; flux-eye/deep.ts :
  *  « …(tronque)… » sans accent, par convention du fichier) — préservé via
  *  paramètre plutôt que codé en dur. */
-export function renderFiles(files: ProjectFile[], cap: number, truncatedLabel = '…(tronqué)…'): string {
+/** Résultat de `renderFilesDetailed` : le texte plus ce qui a été PERDU en
+ *  route. `droppedCount` = fichiers jamais montrés (au-delà du coup de coupe),
+ *  `truncated` = le dernier fichier a été coupé en plein milieu. Sert au
+ *  diagnostic de couverture : un audit qui n'a vu qu'un préfixe ne doit jamais
+ *  pouvoir se déclarer « hors sujet » (cf. B2 de l'audit du 2026-09-28). */
+export interface RenderedPayload {
+  text: string
+  shownCount: number
+  droppedCount: number
+  truncated: boolean
+}
+
+/** Variante instrumentée de `renderFiles` : même sortie textuelle, plus le
+ *  compte de ce qui n'a pas été montré. `truncatedLabel` reste paramétrable
+ *  pour préserver les conventions d'accent selon le visage appelant. */
+export function renderFilesDetailed(
+  files: ProjectFile[],
+  cap: number,
+  truncatedLabel = '…(tronqué)…',
+): RenderedPayload {
   let out = ''
-  for (const f of files) {
+  let shown = 0
+  let truncated = false
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]!
     const header = `\n----- ${f.path} -----\n`
     if (out.length + header.length + f.content.length > cap) {
       const room = Math.max(0, cap - out.length - header.length)
-      if (room > 200) out += header + f.content.slice(0, room) + `\n${truncatedLabel}\n`
-      break
+      if (room > 200) {
+        out += header + f.content.slice(0, room) + `\n${truncatedLabel}\n`
+        shown++
+        truncated = true
+      }
+      // Tout ce qui suit (y compris ce fichier s'il n'a pas eu de place) n'est
+      // jamais montré.
+      return { text: out, shownCount: shown, droppedCount: files.length - shown, truncated }
     }
     out += header + f.content
+    shown++
   }
-  return out
+  return { text: out, shownCount: shown, droppedCount: files.length - shown, truncated }
+}
+
+export function renderFiles(files: ProjectFile[], cap: number, truncatedLabel = '…(tronqué)…'): string {
+  return renderFilesDetailed(files, cap, truncatedLabel).text
 }
 
 // ── walkTree : parcours récursif borné, extension/dossiers paramétrés ───────

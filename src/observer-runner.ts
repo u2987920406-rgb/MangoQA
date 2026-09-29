@@ -99,7 +99,12 @@ export function observerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  *  échec est avalé mais TRACÉ (console.warn, fail-open ≠ fail-silent). */
 export function runObserver(workspace: string, deps: ObserverRunnerDeps = {}, env: NodeJS.ProcessEnv = process.env): void {
   const readEntries = deps.readEntries ?? defaultReadEntries
-  const writeReport = deps.writeReport ?? atomicWriteFileSync
+  const writeReport = deps.writeReport ?? ((f, d) => {
+    // mkdir réservé à l'écrivain RÉEL : un writer injecté en test ne doit
+    // jamais toucher le disque (cf. runner Disjoncteur).
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    atomicWriteFileSync(f, d)
+  })
   const now = deps.now ?? (() => new Date())
 
   try {
@@ -116,7 +121,6 @@ export function runObserver(workspace: string, deps: ObserverRunnerDeps = {}, en
       rendered,
     }
     const dir = path.join(workspace, '.mangoqa')
-    fs.mkdirSync(dir, { recursive: true })
     writeReport(path.join(dir, OBSERVER_REPORT_FILE), JSON.stringify(payload, null, 2))
   } catch (err) {
     console.warn('[observer]', (err as Error)?.message ?? err)

@@ -105,6 +105,11 @@ export function runDisjoncteurOnce(
 ): BreakerReport {
   const readEvents = deps.readEvents ?? readBusEvents
   const writeFile = deps.writeFile ?? ((f, d) => {
+    // Le mkdir appartient au writer PAR DÉFAUT (écrivain réel) : un writer
+    // injecté en test ne doit jamais toucher le disque — sinon le mkdir
+    // inconditionnel ci-dessous rendait l'injection inopérante et le test
+    // dépendait de la machine (EACCES sur /ws).
+    fs.mkdirSync(path.dirname(f), { recursive: true })
     // Atomic write: tmp+rename protects against mid-write crashes corrupting critical data
     const tmp = `${f}.tmp`
     fs.writeFileSync(tmp, d, 'utf8')
@@ -134,7 +139,6 @@ export function runDisjoncteurOnce(
 
   const dir = qaDir(workspace)
   try {
-    fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, VERDICT_FILE), JSON.stringify(report, null, 2))
   } catch (err) {
     /* fail-open : un échec d'écriture du snapshot ne casse pas la surveillance */

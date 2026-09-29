@@ -201,10 +201,13 @@ export async function runFluxDeep(
 ): Promise<FluxDeepObservation> {
   const obs = await auditFluxDeep(graph, tier0, files, signal, deps)
   try {
-    const writeFile = deps.writeFile ?? ((f, d) => fs.writeFileSync(f, d, 'utf8'))
+    const writeFile = deps.writeFile ?? ((f, d) => {
+      // mkdir réservé à l'écrivain RÉEL (cf. runner Disjoncteur).
+      fs.mkdirSync(path.dirname(f), { recursive: true })
+      fs.writeFileSync(f, d, 'utf8')
+    })
     const now = deps.now ?? (() => Date.now())
     const dir = path.join(projDir, '.mangoqa')
-    fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, DEEP_OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
   } catch (err) {
     // fail-open

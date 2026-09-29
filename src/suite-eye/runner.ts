@@ -80,7 +80,12 @@ export interface SuiteEyeDeps {
 
 /** Un passage de l'Auditeur de Suite : charge les apps, mesure, écrit, renvoie le rapport. */
 export function analyzeSuite(workspaceDir: string, deps: SuiteEyeDeps = {}): { obs: SuiteObservation; apps: SuiteApp[] } {
-  const writeFile = deps.writeFile ?? atomicWriteFileSync
+  const writeFile = deps.writeFile ?? ((f, d) => {
+    // mkdir réservé à l'écrivain RÉEL : un writer injecté en test ne doit
+    // jamais toucher le disque (cf. runner Disjoncteur).
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    atomicWriteFileSync(f, d)
+  })
   const now = deps.now ?? (() => Date.now())
   const readApps = deps.readApps ?? readSuiteApps
 
@@ -88,7 +93,6 @@ export function analyzeSuite(workspaceDir: string, deps: SuiteEyeDeps = {}): { o
   const obs = auditSuite(apps)
   try {
     const dir = path.join(workspaceDir, '.mangoqa')
-    fs.mkdirSync(dir, { recursive: true })
     writeFile(path.join(dir, SUITE_OBSERVATIONS_FILE), JSON.stringify({ ...obs, observedAt: now() }, null, 2))
   } catch (err) {
     // fail-open : un échec d'écriture n'arrête jamais la production.
