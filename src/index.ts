@@ -27,6 +27,7 @@ import { runObserver, observerEnabled } from './observer-runner.js'
 import { realFs } from './orchestrator.js'
 import { scanForSignals, filterChangedSignals, initFallbackScanState } from './watch-fallback.js'
 import { sonderCerveauAudit, formaterSonde } from './sonde-cerveau.js'
+import { alignerCerveauAudit } from './cerveau-partage.js'
 
 // Ordre = priorité de rejet (la 1ʳᵉ branche bloquante en échec porte le Feu Rouge).
 const BRANCHES: Branch[] = [architecture, security, accessibility, performance, tests, designSystem]
@@ -61,6 +62,16 @@ function beat(): void {
 // ── Démarrage ────────────────────────────────────────────────────────────────
 beat()
 setInterval(beat, HEARTBEAT_MS)
+
+// B16 (audit 2026-09-28) — ALIGNEMENT DU CERVEAU, et surtout FIN DU SILENCE.
+// Le cerveau de l'auditeur etait choisi ici (QA_OLLAMA_MODEL) sans aucun lien avec le
+// registre partage de l'Atelier : changer de cerveau la-bas ne changeait rien ici, et
+// rien ne le disait. On aligne (si l'exploitant n'a rien fixe) et on SIGNALE toute
+// divergence residuelle. Ne leve jamais, ne bloque pas le demarrage.
+{
+  const message = alignerCerveauAudit()
+  if (message) console.warn(message)
+}
 
 // D3 (audit 2026-09-28, B1) — SONDE DE CERVEAU au démarrage.
 // Le heartbeat ci-dessus prouve que le PROCESS vit ; il ne prouve pas qu'un audit

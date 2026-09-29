@@ -9,7 +9,7 @@
     "start": "node --import tsx src/index.ts",
     "watch:supervised": "tsx src/watchdog.ts",
     "typecheck": "tsc --noEmit",
-    "test:manual": "tsx tests/manual/test-lots-audit.ts && tsx tests/manual/test-sonde-cerveau.ts && tsx tests/manual/test-disjoncteur-core.ts && tsx tests/manual/test-disjoncteur-circuit.ts && tsx tests/manual/test-disjoncteur-cost.ts && tsx tests/manual/test-disjoncteur-regression.ts && tsx tests/manual/test-disjoncteur-memory.ts && tsx tests/manual/test-disjoncteur-killswitch.ts && tsx tests/manual/test-disjoncteur-runner.ts && tsx tests/manual/test-design-eye.ts && tsx tests/manual/test-flux-eye.ts && tsx tests/manual/test-flux-deep.ts && tsx tests/manual/test-llm.ts && tsx tests/manual/test-couverture-partielle.ts && tsx tests/manual/test-suite-eye.ts",
+    "test:manual": "tsx tests/manual/test-lots-audit.ts && tsx tests/manual/test-sonde-cerveau.ts && tsx tests/manual/test-disjoncteur-core.ts && tsx tests/manual/test-disjoncteur-circuit.ts && tsx tests/manual/test-disjoncteur-cost.ts && tsx tests/manual/test-disjoncteur-regression.ts && tsx tests/manual/test-disjoncteur-memory.ts && tsx tests/manual/test-disjoncteur-killswitch.ts && tsx tests/manual/test-disjoncteur-runner.ts && tsx tests/manual/test-design-eye.ts && tsx tests/manual/test-flux-eye.ts && tsx tests/manual/test-flux-deep.ts && tsx tests/manual/test-llm.ts && tsx tests/manual/test-couverture-partielle.ts && tsx tests/manual/test-suite-eye.ts && tsx tests/manual/test-cerveau-partage.ts && tsx tests/manual/test-doc-honnete.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
