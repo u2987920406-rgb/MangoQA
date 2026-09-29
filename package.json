@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Mango QA \u2014 framework d'audit autonome (Audit Fant\u00f4me) pour MangoOS. Reconstruit depuis le contrat d'interface mangoqa.ts (2026-06-19).",
+  "description": "Mango QA — framework d'audit autonome (Audit Fantôme) pour MangoOS. Reconstruit depuis le contrat d'interface mangoqa.ts (2026-06-19).",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node --import tsx src/index.ts",
@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.173",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.284",
     "chokidar": "^3.6.0",
     "dotenv": "^17.4.2",
     "tree-sitter-wasms": "^0.1.13",

@@ -12,7 +12,10 @@
 // bearer — la même que celle de Hermes (~/.hermes/.env). Si OLLAMA_API_KEY est
 // absent, aucun header d'auth n'est envoyé (comportement local d'origine intact).
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
-const DEFAULT_MODEL = process.env.QA_OLLAMA_MODEL ?? 'qwen3.5:cloud'
+// Décision Raf (2026-09-29) : le repli Ollama de MangoQA est DeepSeek v4.1 flash —
+// le même cerveau économique que l'Élève de MangoOS, souverain côté Ollama Cloud.
+// Ce défaut n'intervient QUE sans .env ; la valeur vivante est QA_OLLAMA_MODEL.
+const DEFAULT_MODEL = process.env.QA_OLLAMA_MODEL ?? 'deepseek-v4.1-flash'
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY?.trim() ?? ''
 
 /** Un appel chat non-streamé à Ollama. Lève si Ollama est injoignable, renvoie une

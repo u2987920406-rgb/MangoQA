@@ -2,3 +2,7 @@ node_modules/
 dist/
 .env
 *.log
+
+# Corpus de banc du visage QA (2026-09-21) — données d'expérience, référencées
+# par aucun code : jamais versionnées (régénérables via evals/corpus_builder.py)
+evals/

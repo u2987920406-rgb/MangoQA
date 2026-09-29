@@ -20,11 +20,11 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
 }))
 
-// (#165) askLLM (llm.ts) tente Ollama AVANT Claude. Sans mock réseau, le fetch()
-// réel vers le daemon Ollama ferait échouer/expirer ces tests (timeout vitest
-// 5s << QA_OLLAMA_TIMEOUT_MS 25s). On simule "Ollama injoignable" en faisant
-// échouer fetch INSTANTANÉMENT — c'est le comportement RÉEL en cas d'indisponibilité,
-// qui déclenche la bascule immédiate vers le mock Claude ci-dessus.
+// (#165 puis 2026-09-29) askLLM (llm.ts) tente désormais Claude en PRIMAIRE (Sonnet 5,
+// décision Raf) et bascule sur Ollama en repli si Claude lève. Le mock `query` du SDK
+// (ci-dessus) porte donc le chemin PRIMAIRE ; ce stub `fetch` « Ollama indisponible »
+// empêche un appel réseau réel vers l'Ollama du repli quand un test force l'échec Claude
+// (sinon : timeout vitest 5 s << QA_OLLAMA_TIMEOUT_MS 25 s).
 vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fetch mocked (test) : Ollama indisponible'))))
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
@@ -120,10 +120,12 @@ describe('Branche ♿ Accessibilité', () => {
   })
 
   it('audit() LLM plante → fail-open (skip)', async () => {
+    // 2026-09-29 : Claude est le PRIMAIRE. Les DEUX cerveaux (Claude puis Ollama) lèvent
+    // → askLLM propage la dernière erreur, que la branche transforme en `skip` explicite.
     llmThrows(new Error('réseau KO'))
     const finding = await accessibility.audit(ctx([file('Button.jsx')]))
     expect(finding.status).toBe('skip')
-    expect(finding.summary).toContain('réseau KO')
+    expect(finding.summary).toContain('Ollama indisponible')
   })
 
   it('blocking = true', () => {

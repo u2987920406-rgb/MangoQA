@@ -1,13 +1,18 @@
 // Cerveau d'audit de Mango QA (#165 — souveraineté).
 //
-// PRIMAIRE : askOllama (ollama-client.ts, qwen3.5:cloud) — souverain, $0 API,
-// n'entame pas le quota d'abonnement Claude Code partagé avec l'usage interactif.
-// REPLI : askClaude (ABONNEMENT Claude Code, $0 crédits API — subscriptionEnv()
+// DÉCISION RAF 2026-09-29 : le cerveau d'audit est désormais Claude SONNET 5
+// (`QA_MODEL`, abonnement Claude Code) — l'audit est le juge du harnais, il mérite
+// le modèle le plus fiable, et le quota consommé reste borné (6 branches par audit).
+//
+// PRIMAIRE : askClaude (ABONNEMENT Claude Code, $0 crédits API — subscriptionEnv()
 // neutralise les secrets pour ne jamais dériver vers les crédits payants NI fuiter
-// un secret vers le SDK), déclenché UNIQUEMENT si askOllama lève (Ollama injoignable/
-// HTTP en erreur/timeout) — jamais sur une réponse simplement illisible (ça, c'est un
-// problème de FORMAT, pas de DISPONIBILITÉ ; parseFirstJson/auditWithLLM le traitent
-// déjà en fail-open plus bas, sans re-solliciter un second cerveau — axiome 16/17).
+// un secret vers le SDK).
+// REPLI : askOllama (ollama-client.ts, souverain, n'entame PAS le quota d'abonnement)
+// — déclenché UNIQUEMENT si askClaude lève (abonnement en limite de fenêtre 5 h,
+// réseau, SDK), ce qui est le cas réel observé le 2026-09-28 (« You've hit your
+// session limit ») ; il ne doit jamais laisser un audit sans verdict.
+// Un retour Illisible n'est PAS une indisponibilité : parseFirstJson/auditWithLLM
+// le traitent en fail-open plus bas sans re-solliciter un second cerveau (axiome 16/17).
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { AuditContext, BranchFinding, BranchStatus } from './types.js'
 import { askOllama } from './ollama-client.js'
@@ -76,9 +81,14 @@ const OLLAMA_RETRY_ATTEMPTS = 2 // tentatives SUPPLÉMENTAIRES → 3 essais Olla
 const OLLAMA_RETRY_DELAY_MS = 1_500
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** (system, user) → texte, PRIMAIRE Ollama (retry + backoff avant d'abandonner) + REPLI
- *  Claude seulement après épuisement des tentatives. Ne lève QUE si Claude échoue aussi.
- *  Dépendances injectables (tests) — défaut = le vrai dispatcher Ollama/Claude/setTimeout. */
+/** (system, user) → texte. ORDRE 2026-09-29 : PRIMAIRE askClaude (Sonnet 5,
+ *  abonnement — décision Raf : l'audit mérite le modèle le plus fiable), REPLI askOllama
+ *  si Claude lève (limite de fenêtre 5 h, réseau, SDK). Ne lève QUE si les deux échouent.
+ *  Dépendances injectables (tests) — défaut = le vrai dispatcher Claude/Ollama/setTimeout.
+ *
+ *  ⚠ Les noms `deps.ask`/`deps.askFallback` gardent leur sens HISTORIQUE (primaire =
+ *  `ask`, repli = `askFallback`) : les tests existants injectent ce qu'ils veulent dans
+ *  chaque slot et restent valides. Seuls les DÉFAUTS ont été inversés. */
 export async function askLLM(
   system: string,
   user: string,
@@ -90,8 +100,8 @@ export async function askLLM(
     retryDelayMs?: number
   } = {},
 ): Promise<string> {
-  const ask = deps.ask ?? askOllama
-  const askFallback = deps.askFallback ?? askClaude
+  const ask = deps.ask ?? askClaude
+  const askFallback = deps.askFallback ?? askOllama
   const sleep = deps.sleep ?? defaultSleep
   const retryAttempts = deps.retryAttempts ?? OLLAMA_RETRY_ATTEMPTS
   const retryDelayMs = deps.retryDelayMs ?? OLLAMA_RETRY_DELAY_MS
@@ -102,8 +112,8 @@ export async function askLLM(
     } catch (err) {
       const willRetry = attempt < maxTries
       console.warn(
-        `[mango-qa] Ollama tentative ${attempt}/${maxTries} échouée (${(err as Error)?.message ?? err})` +
-          (willRetry ? ` — nouvel essai dans ${retryDelayMs}ms.` : ' — repli Claude.'),
+        `[mango-qa] ${QA_MODEL} tentative ${attempt}/${maxTries} échouée (${(err as Error)?.message ?? err})` +
+          (willRetry ? ` — nouvel essai dans ${retryDelayMs}ms.` : ' — repli Ollama (souverain).'),
       )
       if (willRetry) await sleep(retryDelayMs)
     }
