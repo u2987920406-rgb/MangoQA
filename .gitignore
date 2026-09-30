@@ -6,3 +6,9 @@ dist/
 # Corpus de banc du visage QA (2026-09-21) — données d'expérience, référencées
 # par aucun code : jamais versionnées (régénérables via evals/corpus_builder.py)
 evals/
+
+# Sauvegardes de .env : le motif .env seul ne couvre PAS .env.bak-* (incident
+# du 2026-09-30 : un .env.bak contenant une cle a ete commite puis pousse sur un
+# depot PUBLIC parce que seule la ligne ".env" existait).
+.env.bak*
+*.env.bak*
