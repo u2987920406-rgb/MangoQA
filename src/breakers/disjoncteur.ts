@@ -26,14 +26,17 @@ export interface BusEvent {
 // ── Les 5 disjoncteurs et leur réflexe ────────────────────────────────────────
 export type BreakerId =
   | 'nightly-circuit' //   1. N échecs de suite     → pause + alerte
-  | 'cost-guard' //        2. coût/nuit > plafond   → bascule full local
+  | 'cost-guard' //        2. coût/nuit > plafond   → arrêt de la dépense (MangoOS s'arrête)
   | 'regression-lock' //   3. score d'audit < seuil → bloque le commit
   | 'memory-drift' //      4. magasin saturé/contra → gèle l'écriture mémoire
   | 'agent-killswitch' //  5. agent emballé         → termine l'agent proprement
 
 export type BreakerAction =
   | 'pause-and-alert'
-  | 'fallback-local'
+  // Ex-'fallback-local' (audit dormant 2026-09-30) : aucun consommateur ne basculait de cerveau,
+  // le nom promettait une action jamais appliquée. L'effet RÉEL côté MangoOS = arrêt de la nuit à la
+  // frontière d'itération (MANGOQA_STOP_AUTHORITY) ; le nom le dit maintenant.
+  | 'halt-spend'
   | 'block-commit'
   | 'freeze-memory'
   | 'terminate-agent'
@@ -184,7 +187,7 @@ function nightlyCircuit(events: BusEvent[], cfg: BreakerConfig): BreakerTrip[] {
 }
 
 // ── 2. Garde-fou coût — escalade > plafond/nuit ──────────────────────────────
-// Cumule payload.costUsd sur la fenêtre. Tout dépassement = bascule full local.
+// Cumule payload.costUsd sur la fenêtre. Tout dépassement = arrêt de la dépense (constat ; MangoOS s'arrête lui-même).
 function costGuard(events: BusEvent[], cfg: BreakerConfig, windowStart: number): BreakerTrip | null {
   let sum = 0
   let lastTs = 0
@@ -199,8 +202,8 @@ function costGuard(events: BusEvent[], cfg: BreakerConfig, windowStart: number):
   if (sum <= cfg.nightlyCostCeilingUsd) return null
   return {
     breaker: 'cost-guard',
-    action: 'fallback-local',
-    reason: `Coût cumulé ${sum.toFixed(2)}$ > plafond ${cfg.nightlyCostCeilingUsd.toFixed(2)}$ — bascule cerveau local.`,
+    action: 'halt-spend',
+    reason: `Coût cumulé ${sum.toFixed(2)}$ > plafond ${cfg.nightlyCostCeilingUsd.toFixed(2)}$ — arrêt de la dépense (la nuit s'arrête à la frontière d'itération).`,
     observed: Math.round(sum * 100) / 100,
     threshold: cfg.nightlyCostCeilingUsd,
     lastEventTs: lastTs,

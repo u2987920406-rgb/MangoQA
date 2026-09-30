@@ -19,7 +19,7 @@ const ev = makeEv()
 
   const r = evaluateBreakers(pricey, cfg, { now: FROZEN })
   const t = r.trips.find(x => x.breaker === 'cost-guard')!
-  check('cost-guard → action fallback-local', t.action === 'fallback-local')
+  check('cost-guard → action halt-spend (ex-fallback-local, jamais appliqué)', t.action === 'halt-spend')
   check('cost-guard → observed = 5.5', t.observed === 5.5)
 
   // Fenêtre : un coût antérieur au début de fenêtre est ignoré.
