@@ -127,8 +127,16 @@ export const DEFAULT_BREAKER_CONFIG: BreakerConfig = {
   minAuditScore: 0.6,
   regressionLockEnabled: false,
   maxMemoryStoreSize: 5_000,
-  maxAgentTurns: 40,
-  maxAgentTokens: 200_000,
+  /**
+   * Bornes d'emballement d'un agent (kill switch #5), CALÉES SUR L'OBSERVÉ
+   * (décision Raf 2026-09-30). Mesure sur bus-events.jsonl : 44 tours de chat,
+   * max contexte 23 807 tokens, tous les runs à 1 tour. Les anciennes bornes
+   * (40 tours / 200 k) étaient au-delà du réel — une borne qui ne peut jamais se
+   * déclencher n'est pas un garde-fou. Désormais 15 tours / 100 k tokens : la
+   * marge reste large au-dessus de l'observé, mais un run qui dérape mord.
+   */
+  maxAgentTurns: 15,
+  maxAgentTokens: 100_000,
   maxAgentDurationMs: 10 * 60_000,
 }
 
@@ -298,7 +306,10 @@ function agentKillswitch(
   const per = new Map<string, Acc>()
   for (const env of events) {
     const turns = num(field(env, 'turns'))
-    const tokens = num(field(env, 'tokens'))
+    // Le pont du Bus publie `contextTokens` (taille de contexte réel) ; `tokens` est le nom
+    // historique lu ici — que PERSONNE n'émettait (constat 2026-09-30 sur bus-events.jsonl :
+    // le kill switch était donc borgne). On accepte les deux.
+    const tokens = num(field(env, 'tokens')) ?? num(field(env, 'contextTokens'))
     const durationMs = num(field(env, 'durationMs'))
     if (turns === undefined && tokens === undefined && durationMs === undefined) continue
     const a = per.get(env.sender) ?? { turns: 0, tokens: 0, durationMs: 0, lastTs: 0 }

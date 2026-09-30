@@ -33,6 +33,17 @@ const ev = makeEv()
     ev({ type: 'agent', sender: 'builder', payload: { turns: 45 } }),
   ]
   check('max cumulé (45 > 40) → trip', tripIds(cumulative).includes('agent-killswitch'))
+
+  // ── Point aveugle corrigé (2026-09-30) ──────────────────────────────────────
+  // Le pont du Bus publie `contextTokens` (jamais `tokens`) : le kill switch lisait
+  // un champ que personne n'écrivait. Il doit désormais voir les deux.
+  check('contextTokens au-dessus du plafond → trip',
+    tripIds([ev({ type: 'chat.turn', sender: 'proj', payload: { contextTokens: 150_000 } })]).includes('agent-killswitch'))
+  check('contextTokens sous le plafond → pas de trip',
+    !tripIds([ev({ type: 'chat.turn', sender: 'proj', payload: { contextTokens: 50_000 } })]).includes('agent-killswitch'))
+  // Bornes calées sur l'observé (15 tours / 100 k) : 20 tours mord, 10 non.
+  check('20 tours > 15 → trip', tripIds([ev({ type: 'agent', sender: 'x', payload: { turns: 20 } })]).includes('agent-killswitch'))
+  check('10 tours ≤ 15 → pas de trip', !tripIds([ev({ type: 'agent', sender: 'x', payload: { turns: 10 } })]).includes('agent-killswitch'))
 }
 
 // ── #L70 : kill switch — agent PÉRIMÉ ignoré, agent RÉCENT toujours déclenché ─
