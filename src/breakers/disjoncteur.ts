@@ -113,6 +113,16 @@ export interface BreakerConfig {
 
 export const DEFAULT_BREAKER_CONFIG: BreakerConfig = {
   maxConsecutiveFailures: 3,
+  /**
+   * 5 $ — plafond de coût de la nuit, VOLONTAIREMENT plus serré que le plafond $
+   * global de MangoOS (NOCTURNAL_GLOBAL_BUDGET_USD, 20 $). Décision de Raf
+   * (2026-09-30) : ici le frein est le coût, pas le temps de la nuit. C'est donc
+   * CE seuil qui arrête la dépense en premier — ne pas l'aligner sur 20 $ sans
+   * le lui demander. Il a maintenant un effet réel : l'action du disjoncteur est
+   * passée de `fallback-local` (qui ne basculait rien : cette machine n'a pas de
+   * cerveau local à qui passer la main) à `halt-spend`, arrêt à la frontière
+   * d'itération suivante.
+   */
   nightlyCostCeilingUsd: 5,
   minAuditScore: 0.6,
   regressionLockEnabled: false,
